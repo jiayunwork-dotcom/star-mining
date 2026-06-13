@@ -90,3 +90,11 @@ func (ge *GameEngine) GetPlayer(playerID string) *models.Player {
 func (ge *GameEngine) GetWinner() *models.Player {
 	return ge.instance.GetWinner()
 }
+
+func (ge *GameEngine) GetTurnReport(playerID string) *models.TurnReport {
+	return ge.instance.GetTurnReport(playerID)
+}
+
+func (ge *GameEngine) IsReportReady() bool {
+	return ge.instance.IsReportReady()
+}

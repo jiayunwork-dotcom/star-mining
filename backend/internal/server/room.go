@@ -33,16 +33,18 @@ type Player struct {
 }
 
 type Room struct {
-	ID         string
-	Name       string
-	Status     string
-	Players    map[string]*Player
-	MaxPlayers int
-	CreatorID  string
-	CreatedAt  time.Time
-	Turn       int
-	mu         sync.RWMutex
-	game       *game.GameInstance
+	ID                   string
+	Name                 string
+	Status               string
+	Players              map[string]*Player
+	MaxPlayers           int
+	CreatorID            string
+	CreatedAt            time.Time
+	Turn                 int
+	mu                   sync.RWMutex
+	game                 *game.GameInstance
+	reportConfirmations  map[string]bool
+	waitingForReports    bool
 }
 
 type RoomManager struct {
@@ -58,14 +60,16 @@ func NewRoomManager() *RoomManager {
 
 func NewRoom(name string, creatorID string, creatorName string) *Room {
 	room := &Room{
-		ID:         generateRoomID(),
-		Name:       name,
-		Status:     RoomStatusWaiting,
-		Players:    make(map[string]*Player),
-		MaxPlayers: MaxPlayersPerRoom,
-		CreatorID:  creatorID,
-		CreatedAt:  time.Now(),
-		Turn:       0,
+		ID:                  generateRoomID(),
+		Name:                name,
+		Status:              RoomStatusWaiting,
+		Players:             make(map[string]*Player),
+		MaxPlayers:        MaxPlayersPerRoom,
+		CreatorID:         creatorID,
+		CreatedAt:         time.Now(),
+		Turn:                0,
+		reportConfirmations: make(map[string]bool),
+		waitingForReports: false,
 	}
 
 	player := &Player{
@@ -371,6 +375,10 @@ func (r *Room) ProcessTurn() error {
 		return errors.New("game not started")
 	}
 
+	if r.waitingForReports {
+		return errors.New("waiting for turn report confirmations")
+	}
+
 	if err := r.game.ProcessTurn(); err != nil {
 		return err
 	}
@@ -381,7 +389,74 @@ func (r *Room) ProcessTurn() error {
 		r.Status = RoomStatusFinished
 	}
 
+	r.reportConfirmations = make(map[string]bool)
+	r.waitingForReports = true
+
 	return nil
+}
+
+func (r *Room) BroadcastTurnReports() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if r.game == nil || !r.game.IsReportReady() {
+		return
+	}
+
+	for playerID := range r.Players {
+		report := r.game.GetTurnReport(playerID)
+		if report == nil {
+			continue
+		}
+
+		msg, err := NewMessageWithPlayer(MsgTypeTurnReport, r.ID, playerID, report)
+		if err != nil {
+			continue
+		}
+
+		_ = r.SendToPlayer(playerID, msg)
+	}
+}
+
+func (r *Room) ConfirmTurnReport(playerID string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.waitingForReports {
+		return false, errors.New("not waiting for report confirmations")
+	}
+
+	r.reportConfirmations[playerID] = true
+
+	allConfirmed := true
+	for pid := range r.Players {
+		if !r.reportConfirmations[pid] {
+			allConfirmed = false
+			break
+		}
+	}
+
+	if allConfirmed {
+		r.waitingForReports = false
+	}
+
+	return allConfirmed, nil
+}
+
+func (r *Room) IsWaitingForReports() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.waitingForReports
+}
+
+func (r *Room) GetReportConfirmations() map[string]bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make(map[string]bool)
+	for k, v := range r.reportConfirmations {
+		result[k] = v
+	}
+	return result
 }
 
 func (r *Room) BuildStation(playerID string, bodyID string, resourceType models.ResourceType) error {

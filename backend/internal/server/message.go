@@ -6,42 +6,45 @@ import (
 )
 
 const (
-	MsgTypeGameState    = "game_state"
-	MsgTypePlayerAction = "player_action"
-	MsgTypeChat         = "chat"
-	MsgTypeEvent        = "event"
-	MsgTypeHeartbeat    = "heartbeat"
-	MsgTypeSystem       = "system"
-	MsgTypeError        = "error"
+	MsgTypeGameState        = "game_state"
+	MsgTypePlayerAction     = "player_action"
+	MsgTypeChat             = "chat"
+	MsgTypeEvent            = "event"
+	MsgTypeHeartbeat        = "heartbeat"
+	MsgTypeSystem           = "system"
+	MsgTypeError            = "error"
+	MsgTypeTurnReport       = "turn_report"
+	MsgTypeTurnReportAck    = "turn_report_ack"
 )
 
 const (
-	ActionReady           = "ready"
-	ActionUnready         = "unready"
-	ActionStartGame       = "start_game"
-	ActionNextTurn        = "next_turn"
-	ActionEndTurn         = "end_turn"
-	ActionBuildStation    = "build_station"
-	ActionBuildRefinery   = "build_refinery"
-	ActionBuildShipyard   = "build_shipyard"
-	ActionBuildShip       = "build_ship"
-	ActionCreateFleet     = "create_fleet"
-	ActionMoveFleet       = "move_fleet"
-	ActionResearchTech    = "research_tech"
-	ActionPlaceBuyOrder   = "place_buy_order"
-	ActionPlaceSellOrder  = "place_sell_order"
-	ActionCancelOrder     = "cancel_order"
-	ActionPlaceBid        = "place_bid"
-	ActionBlockLane       = "block_lane"
-	ActionHirePirates     = "hire_pirates"
-	ActionBuyStock        = "buy_stock"
-	ActionSellStock       = "sell_stock"
-	ActionProposeTakeover = "propose_takeover"
-	ActionLoadCargo       = "load_cargo"
-	ActionUnloadCargo     = "unload_cargo"
-	ActionUpgradeStation  = "upgrade_station"
-	ActionUpgradeRefinery = "upgrade_refinery"
-	ActionGetGameState    = "get_game_state"
+	ActionReady             = "ready"
+	ActionUnready           = "unready"
+	ActionStartGame         = "start_game"
+	ActionNextTurn          = "next_turn"
+	ActionEndTurn           = "end_turn"
+	ActionBuildStation      = "build_station"
+	ActionBuildRefinery     = "build_refinery"
+	ActionBuildShipyard     = "build_shipyard"
+	ActionBuildShip         = "build_ship"
+	ActionCreateFleet       = "create_fleet"
+	ActionMoveFleet         = "move_fleet"
+	ActionResearchTech      = "research_tech"
+	ActionPlaceBuyOrder     = "place_buy_order"
+	ActionPlaceSellOrder    = "place_sell_order"
+	ActionCancelOrder       = "cancel_order"
+	ActionPlaceBid          = "place_bid"
+	ActionBlockLane         = "block_lane"
+	ActionHirePirates       = "hire_pirates"
+	ActionBuyStock          = "buy_stock"
+	ActionSellStock         = "sell_stock"
+	ActionProposeTakeover   = "propose_takeover"
+	ActionLoadCargo         = "load_cargo"
+	ActionUnloadCargo       = "unload_cargo"
+	ActionUpgradeStation    = "upgrade_station"
+	ActionUpgradeRefinery   = "upgrade_refinery"
+	ActionGetGameState      = "get_game_state"
+	ActionConfirmTurnReport = "confirm_turn_report"
 )
 
 type Message struct {
@@ -99,6 +102,20 @@ type SystemData struct {
 type ErrorData struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+type TurnReportAckData struct {
+	Turn     int    `json:"turn"`
+	PlayerID string `json:"player_id"`
+	Confirmed bool  `json:"confirmed"`
+}
+
+func (m *Message) ParseTurnReportAck() (*TurnReportAckData, error) {
+	var data TurnReportAckData
+	if err := json.Unmarshal(m.Data, &data); err != nil {
+		return nil, fmt.Errorf("failed to parse turn report ack data: %w", err)
+	}
+	return &data, nil
 }
 
 func NewMessage(msgType string, data interface{}) (*Message, error) {

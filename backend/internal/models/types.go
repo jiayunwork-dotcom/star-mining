@@ -303,6 +303,115 @@ type Blockade struct {
 	Active          bool     `json:"active"`
 }
 
+type ResourceChange struct {
+	ResourceType ResourceType `json:"resource_type"`
+	ResourceName string       `json:"resource_name"`
+	Produced     float64      `json:"produced"`
+	Consumed     float64      `json:"consumed"`
+	Traded       float64      `json:"traded"`
+	NetChange    float64      `json:"net_change"`
+}
+
+type FinanceRecord struct {
+	Category string  `json:"category"`
+	Amount   float64 `json:"amount"`
+	Label    string  `json:"label"`
+}
+
+type FinanceSummary struct {
+	IncomeItems  []*FinanceRecord `json:"income_items"`
+	ExpenseItems []*FinanceRecord `json:"expense_items"`
+	TotalIncome  float64          `json:"total_income"`
+	TotalExpense float64          `json:"total_expense"`
+	NetIncome    float64          `json:"net_income"`
+	CurrentBalance float64        `json:"current_balance"`
+}
+
+type FleetMovement struct {
+	FleetID        string `json:"fleet_id"`
+	FleetName      string `json:"fleet_name"`
+	FromBodyID     string `json:"from_body_id"`
+	FromBodyName   string `json:"from_body_name"`
+	ToBodyID       string `json:"to_body_id"`
+	ToBodyName     string `json:"to_body_name"`
+	TurnsRemaining int    `json:"turns_remaining"`
+	Arrived        bool   `json:"arrived"`
+}
+
+type CombatRecord struct {
+	CombatID        string  `json:"combat_id"`
+	AttackerID      string  `json:"attacker_id"`
+	AttackerName    string  `json:"attacker_name"`
+	DefenderID      string  `json:"defender_id"`
+	DefenderName    string  `json:"defender_name"`
+	Winner          string  `json:"winner"`
+	AttackerLosses  int     `json:"attacker_losses"`
+	DefenderLosses  int     `json:"defender_losses"`
+	AttackerDamage  float64 `json:"attacker_damage"`
+	DefenderDamage  float64 `json:"defender_damage"`
+	LootSummary     string  `json:"loot_summary"`
+}
+
+type PirateAttackRecord struct {
+	FleetID       string  `json:"fleet_id"`
+	FleetName     string  `json:"fleet_name"`
+	LocationName  string  `json:"location_name"`
+	PlayerLosses  int     `json:"player_losses"`
+	PirateLosses  int     `json:"pirate_losses"`
+	Defended      bool    `json:"defended"`
+	DamageTaken   float64 `json:"damage_taken"`
+}
+
+type FleetActivity struct {
+	Movements     []*FleetMovement     `json:"movements"`
+	Combats       []*CombatRecord      `json:"combats"`
+	PirateAttacks []*PirateAttackRecord `json:"pirate_attacks"`
+}
+
+type MarketPriceChange struct {
+	ResourceType ResourceType `json:"resource_type"`
+	ResourceName string       `json:"resource_name"`
+	OldPrice     float64      `json:"old_price"`
+	NewPrice     float64      `json:"new_price"`
+	ChangePercent float64     `json:"change_percent"`
+}
+
+type RandomEventRecord struct {
+	EventID     string    `json:"event_id"`
+	EventType   EventType `json:"event_type"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	IsGlobal    bool      `json:"is_global"`
+	TargetID    string    `json:"target_id"`
+	AffectsMe   bool      `json:"affects_me"`
+}
+
+type RankingChangeEntry struct {
+	PlayerID       string  `json:"player_id"`
+	PlayerName     string  `json:"player_name"`
+	CompanyName    string  `json:"company_name"`
+	Score          float64 `json:"score"`
+	Rank           int     `json:"rank"`
+	PreviousRank   int     `json:"previous_rank"`
+	RankChange     int     `json:"rank_change"`
+	IsMe           bool    `json:"is_me"`
+	IsBankrupt     bool    `json:"is_bankrupt"`
+	IsDefeated     bool    `json:"is_defeated"`
+}
+
+type TurnReport struct {
+	Turn              int                    `json:"turn"`
+	PlayerID          string                 `json:"player_id"`
+	PlayerName        string                 `json:"player_name"`
+	ResourceChanges   []*ResourceChange      `json:"resource_changes"`
+	Finance           *FinanceSummary        `json:"finance"`
+	FleetActivity     *FleetActivity         `json:"fleet_activity"`
+	MarketChanges     []*MarketPriceChange   `json:"market_changes"`
+	RandomEvents      []*RandomEventRecord   `json:"random_events"`
+	Rankings          []*RankingChangeEntry  `json:"rankings"`
+	GeneratedAt       time.Time              `json:"generated_at"`
+}
+
 type GameState struct {
 	ID             string            `json:"id"`
 	Turn           int               `json:"turn"`

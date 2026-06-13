@@ -210,6 +210,26 @@ func (c *WebSocketConn) handlePlayerAction(msg *Message, room *Room) {
 		execErr = room.StartGame()
 	case ActionNextTurn, ActionEndTurn:
 		execErr = room.ProcessTurn()
+		if execErr == nil {
+			go room.BroadcastTurnReports()
+			return
+		}
+	case ActionConfirmTurnReport:
+		allConfirmed, confirmErr := room.ConfirmTurnReport(c.playerID)
+		if confirmErr != nil {
+			c.sendError(400, confirmErr.Error())
+			return
+		}
+		ackMsg, _ := NewMessageWithPlayer(MsgTypeTurnReportAck, c.roomID, c.playerID, &TurnReportAckData{
+			Turn:      room.Turn,
+			PlayerID:  c.playerID,
+			Confirmed: true,
+		})
+		room.Broadcast(ackMsg)
+		if allConfirmed {
+			c.broadcastGameState(room)
+		}
+		return
 	case ActionBuildStation:
 		execErr = c.handleBuildStation(action.Params, room)
 	case ActionBuildRefinery:

@@ -16,27 +16,51 @@ const (
 	InterestRate        = 0.005
 )
 
+type FleetSnapshot struct {
+	CurrentBodyID  string
+	IsMoving       bool
+	TurnsRemaining int
+	DestinationID  string
+	Name           string
+}
+
+type PlayerTurnSnapshot struct {
+	Credits     float64
+	Resources   models.Resources
+	FleetStates map[string]*FleetSnapshot
+	Rank        int
+	Score       float64
+}
+
 type GameInstance struct {
-	ID       string
-	State    *models.GameState
-	players  map[string]*models.Player
-	seed     int64
-	started  bool
-	gameOver bool
-	maxTurns int
-	winnerID string
-	rng      *rand.Rand
+	ID               string
+	State            *models.GameState
+	players          map[string]*models.Player
+	seed             int64
+	started          bool
+	gameOver         bool
+	maxTurns         int
+	winnerID         string
+	rng              *rand.Rand
+	preTurnSnapshots map[string]*PlayerTurnSnapshot
+	preTurnPrices    map[string]map[models.ResourceType]float64
+	turnReports      map[string]*models.TurnReport
+	reportReady      bool
 }
 
 func NewGameInstance(roomID string, seed int64) *GameInstance {
 	return &GameInstance{
-		ID:       roomID,
-		State:    nil,
-		players:  make(map[string]*models.Player),
-		seed:     seed,
-		started:  false,
-		gameOver: false,
-		maxTurns: DefaultMaxTurns,
+		ID:               roomID,
+		State:            nil,
+		players:          make(map[string]*models.Player),
+		seed:             seed,
+		started:          false,
+		gameOver:         false,
+		maxTurns:         DefaultMaxTurns,
+		preTurnSnapshots: make(map[string]*PlayerTurnSnapshot),
+		preTurnPrices:    make(map[string]map[models.ResourceType]float64),
+		turnReports:      make(map[string]*models.TurnReport),
+		reportReady:      false,
 	}
 }
 
@@ -156,10 +180,16 @@ func (gi *GameInstance) ProcessTurn() error {
 		return fmt.Errorf("game is over")
 	}
 
+	gi.reportReady = false
+	gi.saveTurnSnapshots()
+
+	newEvents := gi.State.RandomEvents
 	playerMap := make(map[string]*models.Player)
 	for _, player := range gi.State.Players {
 		playerMap[player.ID] = player
 	}
+
+	newTurnEventsStart := len(gi.State.RandomEvents)
 
 	for _, player := range gi.State.Players {
 		if player.IsDefeated || player.IsBankrupt {
@@ -197,6 +227,7 @@ func (gi *GameInstance) ProcessTurn() error {
 	}
 
 	gi.State.RandomEvents = ProcessTurnEvents(gi.rng, gi.State.GameMap, gi.State.Players, gi.State.RandomEvents)
+	_ = newEvents
 
 	gi.State.Blockades = UpdateBlockades(gi.State.Blockades)
 
@@ -227,6 +258,9 @@ func (gi *GameInstance) ProcessTurn() error {
 	gi.State.UpdatedAt = time.Now()
 
 	gi.checkWinConditions()
+
+	gi.generateTurnReports(newTurnEventsStart)
+	gi.reportReady = true
 
 	return nil
 }
@@ -1251,4 +1285,381 @@ func (gi *GameInstance) calculateRankings() []*models.PlayerRanking {
 	}
 
 	return rankings
+}
+
+func (gi *GameInstance) saveTurnSnapshots() {
+	prevRankings := gi.calculateRankings()
+	rankMap := make(map[string]int)
+	scoreMap := make(map[string]float64)
+	for _, r := range prevRankings {
+		rankMap[r.PlayerID] = r.Rank
+		scoreMap[r.PlayerID] = r.Score
+	}
+
+	for _, player := range gi.State.Players {
+		snapshot := &PlayerTurnSnapshot{
+			Credits:   player.Credits,
+			Resources: make(models.Resources),
+			FleetStates: make(map[string]*FleetSnapshot),
+			Rank:      rankMap[player.ID],
+			Score:     scoreMap[player.ID],
+		}
+		for k, v := range player.Resources {
+			snapshot.Resources[k] = v
+		}
+		for _, fleet := range player.Fleets {
+			snapshot.FleetStates[fleet.ID] = &FleetSnapshot{
+				CurrentBodyID:  fleet.CurrentBodyID,
+				IsMoving:       fleet.IsMoving,
+				TurnsRemaining: fleet.TurnsRemaining,
+				DestinationID:  fleet.DestinationID,
+				Name:           fleet.Name,
+			}
+		}
+		gi.preTurnSnapshots[player.ID] = snapshot
+	}
+
+	for _, ex := range gi.State.Exchanges {
+		priceMap := make(map[models.ResourceType]float64)
+		for k, v := range ex.Prices {
+			priceMap[k] = v
+		}
+		gi.preTurnPrices[ex.ID] = priceMap
+	}
+}
+
+func (gi *GameInstance) GetTurnReport(playerID string) *models.TurnReport {
+	return gi.turnReports[playerID]
+}
+
+func (gi *GameInstance) IsReportReady() bool {
+	return gi.reportReady
+}
+
+var resourceNamesMap = map[models.ResourceType]string{
+	models.IronOre:    "铁矿",
+	models.Titanium:   "钛矿",
+	models.Helium3:    "氦-3",
+	models.RareEarth:  "稀土",
+	models.IceCrystal: "冰晶",
+	models.Fuel:       "燃料",
+}
+
+func getResourceName(rt models.ResourceType) string {
+	if name, ok := resourceNamesMap[rt]; ok {
+		return name
+	}
+	return string(rt)
+}
+
+func (gi *GameInstance) generateTurnReports(newEventsStart int) {
+	gi.turnReports = make(map[string]*models.TurnReport)
+	newRankings := gi.calculateRankings()
+	newRankMap := make(map[string]int)
+	newScoreMap := make(map[string]float64)
+	for _, r := range newRankings {
+		newRankMap[r.PlayerID] = r.Rank
+		newScoreMap[r.PlayerID] = r.Score
+	}
+
+	for _, player := range gi.State.Players {
+		snapshot := gi.preTurnSnapshots[player.ID]
+		report := &models.TurnReport{
+			Turn:        gi.State.Turn,
+			PlayerID:    player.ID,
+			PlayerName:  player.Name,
+			GeneratedAt: gi.State.UpdatedAt,
+		}
+		report.ResourceChanges = gi.generateResourceChanges(player, snapshot)
+		report.Finance = gi.generateFinanceSummary(player, snapshot)
+		report.FleetActivity = gi.generateFleetActivity(player, snapshot)
+		report.MarketChanges = gi.generateMarketChanges()
+		report.RandomEvents = gi.generateRandomEvents(player, newEventsStart)
+		report.Rankings = gi.generateRankings(player.ID, newRankMap, newScoreMap, snapshot)
+		gi.turnReports[player.ID] = report
+	}
+}
+
+func (gi *GameInstance) generateResourceChanges(player *models.Player, snapshot *PlayerTurnSnapshot) []*models.ResourceChange {
+	resourceTypes := []models.ResourceType{
+		models.IronOre, models.Titanium, models.Helium3,
+		models.RareEarth, models.IceCrystal, models.Fuel,
+	}
+	changes := make([]*models.ResourceChange, 0, len(resourceTypes))
+	prevResources := snapshot.Resources
+
+	for _, rt := range resourceTypes {
+		prev := prevResources[rt]
+		curr := player.Resources[rt]
+		net := curr - prev
+
+		produced := 0.0
+		consumed := 0.0
+		traded := 0.0
+
+		for _, station := range player.Stations {
+			if station.ResourceType == rt {
+				produced += station.OutputPerTurn
+			}
+		}
+		for _, ref := range player.Refineries {
+			if ref.InputResource == rt {
+				consumed += ref.InputInventory
+			}
+		}
+		for _, ref := range player.Refineries {
+			if ref.OutputResource == rt {
+				produced += ref.OutputInventory
+			}
+		}
+		if net > produced - consumed {
+			traded = net - (produced - consumed)
+		} else if net < produced - consumed {
+			traded = net - (produced - consumed)
+		}
+
+		changes = append(changes, &models.ResourceChange{
+			ResourceType: rt,
+			ResourceName: getResourceName(rt),
+			Produced:     produced,
+			Consumed:     consumed,
+			Traded:       traded,
+			NetChange:    net,
+		})
+	}
+	return changes
+}
+
+func (gi *GameInstance) generateFinanceSummary(player *models.Player, snapshot *PlayerTurnSnapshot) *models.FinanceSummary {
+	summary := &models.FinanceSummary{
+		IncomeItems:  make([]*models.FinanceRecord, 0),
+		ExpenseItems: make([]*models.FinanceRecord, 0),
+	}
+
+	prevCredits := snapshot.Credits
+	netChange := player.Credits - prevCredits
+
+	incomeTotal := 0.0
+	expenseTotal := 0.0
+
+	maintenance := 0.0
+	for _, s := range player.Stations {
+		maintenance += s.Maintenance
+	}
+	for _, r := range player.Refineries {
+		maintenance += r.Maintenance
+	}
+	for _, sy := range player.Shipyards {
+		maintenance += sy.Maintenance
+	}
+	if maintenance > 0 {
+		summary.ExpenseItems = append(summary.ExpenseItems, &models.FinanceRecord{
+			Category: "maintenance", Amount: maintenance, Label: "设施维护费",
+		})
+		expenseTotal += maintenance
+	}
+
+	if player.TechTree != nil && player.TechTree.Researching != "" {
+		researchCost := 0.0
+		for _, v := range player.TechTree.ResearchCost {
+			researchCost += v
+		}
+		if researchCost > 0 {
+			summary.ExpenseItems = append(summary.ExpenseItems, &models.FinanceRecord{
+				Category: "research", Amount: researchCost, Label: "研发费用",
+			})
+			expenseTotal += researchCost
+		}
+	}
+
+	dividendIncome := 0.0
+	for _, stock := range player.Stocks {
+		dividendIncome += stock.Dividend * float64(stock.Shares)
+	}
+	if dividendIncome > 0 {
+		summary.IncomeItems = append(summary.IncomeItems, &models.FinanceRecord{
+			Category: "dividend", Amount: dividendIncome, Label: "股票分红",
+		})
+		incomeTotal += dividendIncome
+	}
+
+	if player.DailyIncome > 0 {
+		interest := player.DailyIncome
+		summary.IncomeItems = append(summary.IncomeItems, &models.FinanceRecord{
+			Category: "interest", Amount: interest, Label: "存款利息",
+		})
+		incomeTotal += interest
+	}
+
+	tradeProfit := player.TotalTradeProfit * 0.01
+	if tradeProfit > 0 {
+		summary.IncomeItems = append(summary.IncomeItems, &models.FinanceRecord{
+			Category: "trade_profit", Amount: tradeProfit, Label: "贸易利润",
+		})
+		incomeTotal += tradeProfit
+	}
+
+	if len(summary.IncomeItems) == 0 {
+		summary.IncomeItems = append(summary.IncomeItems, &models.FinanceRecord{
+			Category: "other", Amount: 0, Label: "无收入",
+		})
+	}
+	if len(summary.ExpenseItems) == 0 {
+		summary.ExpenseItems = append(summary.ExpenseItems, &models.FinanceRecord{
+			Category: "other", Amount: 0, Label: "无支出",
+		})
+	}
+
+	summary.TotalIncome = incomeTotal
+	summary.TotalExpense = expenseTotal
+	summary.NetIncome = netChange
+	summary.CurrentBalance = player.Credits
+
+	return summary
+}
+
+func (gi *GameInstance) generateFleetActivity(player *models.Player, snapshot *PlayerTurnSnapshot) *models.FleetActivity {
+	activity := &models.FleetActivity{
+		Movements:     make([]*models.FleetMovement, 0),
+		Combats:       make([]*models.CombatRecord, 0),
+		PirateAttacks: make([]*models.PirateAttackRecord, 0),
+	}
+
+	for _, fleet := range player.Fleets {
+		prev, ok := snapshot.FleetStates[fleet.ID]
+		if !ok {
+			continue
+		}
+		if prev.IsMoving || fleet.IsMoving {
+			fromName := gi.getBodyName(prev.CurrentBodyID)
+			toID := fleet.CurrentBodyID
+			if fleet.IsMoving {
+				toID = fleet.DestinationID
+			}
+			if prev.IsMoving && prev.DestinationID != "" {
+				toID = prev.DestinationID
+			}
+			toName := gi.getBodyName(toID)
+			activity.Movements = append(activity.Movements, &models.FleetMovement{
+				FleetID:        fleet.ID,
+				FleetName:      fleet.Name,
+				FromBodyID:     prev.CurrentBodyID,
+				FromBodyName:   fromName,
+				ToBodyID:       toID,
+				ToBodyName:     toName,
+				TurnsRemaining: fleet.TurnsRemaining,
+				Arrived:        !fleet.IsMoving && prev.IsMoving,
+			})
+		}
+	}
+
+	return activity
+}
+
+func (gi *GameInstance) generateMarketChanges() []*models.MarketPriceChange {
+	changes := make([]*models.MarketPriceChange, 0)
+	resourceTypes := []models.ResourceType{
+		models.IronOre, models.Titanium, models.Helium3,
+		models.RareEarth, models.IceCrystal, models.Fuel,
+	}
+
+	for _, ex := range gi.State.Exchanges {
+		prevPrices := gi.preTurnPrices[ex.ID]
+		for _, rt := range resourceTypes {
+			oldPrice := prevPrices[rt]
+			newPrice := ex.Prices[rt]
+			if oldPrice == 0 {
+				oldPrice = newPrice
+			}
+			changePct := 0.0
+			if oldPrice > 0 {
+				changePct = ((newPrice - oldPrice) / oldPrice) * 100
+			}
+			changes = append(changes, &models.MarketPriceChange{
+				ResourceType:  rt,
+				ResourceName:  getResourceName(rt),
+				OldPrice:      oldPrice,
+				NewPrice:      newPrice,
+				ChangePercent: changePct,
+			})
+		}
+		break
+	}
+	return changes
+}
+
+func (gi *GameInstance) generateRandomEvents(player *models.Player, newEventsStart int) []*models.RandomEventRecord {
+	records := make([]*models.RandomEventRecord, 0)
+
+	if len(gi.State.RandomEvents) > newEventsStart {
+		for i := newEventsStart; i < len(gi.State.RandomEvents); i++ {
+			ev := gi.State.RandomEvents[i]
+			affectsMe := ev.Global || ev.TargetID == player.ID
+			records = append(records, &models.RandomEventRecord{
+				EventID:     ev.ID,
+				EventType:   ev.Type,
+				Name:        ev.Name,
+				Description: ev.Description,
+				IsGlobal:    ev.Global,
+				TargetID:    ev.TargetID,
+				AffectsMe:   affectsMe,
+			})
+		}
+	}
+
+	return records
+}
+
+func (gi *GameInstance) generateRankings(currentPlayerID string, newRankMap map[string]int, newScoreMap map[string]float64, snapshot *PlayerTurnSnapshot) []*models.RankingChangeEntry {
+	entries := make([]*models.RankingChangeEntry, 0)
+
+	for _, player := range gi.State.Players {
+		newRank := newRankMap[player.ID]
+		newScore := newScoreMap[player.ID]
+		prevRank := 0
+		if prevSnap, ok := gi.preTurnSnapshots[player.ID]; ok {
+			prevRank = prevSnap.Rank
+		}
+
+		rankChange := 0
+		if prevRank > 0 && newRank > 0 {
+			rankChange = prevRank - newRank
+		}
+
+		entries = append(entries, &models.RankingChangeEntry{
+			PlayerID:     player.ID,
+			PlayerName:   player.Name,
+			CompanyName:  player.CompanyName,
+			Score:        newScore,
+			Rank:         newRank,
+			PreviousRank: prevRank,
+			RankChange:   rankChange,
+			IsMe:         player.ID == currentPlayerID,
+			IsBankrupt:   player.IsBankrupt,
+			IsDefeated:   player.IsDefeated,
+		})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].IsDefeated || entries[i].IsBankrupt {
+			return false
+		}
+		if entries[j].IsDefeated || entries[j].IsBankrupt {
+			return true
+		}
+		return entries[i].Rank < entries[j].Rank
+	})
+
+	return entries
+}
+
+func (gi *GameInstance) getBodyName(bodyID string) string {
+	for _, galaxy := range gi.State.GameMap.Galaxies {
+		for _, body := range galaxy.CelestialBodies {
+			if body.ID == bodyID {
+				return body.Name
+			}
+		}
+	}
+	return bodyID
 }

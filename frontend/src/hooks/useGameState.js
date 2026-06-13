@@ -46,6 +46,9 @@ const initialState = {
   selectedCelestial: null,
   isConnected: false,
   started: false,
+  turnReport: null,
+  showTurnReport: false,
+  reportConfirmations: {},
 };
 
 function gameReducer(state, action) {
@@ -129,6 +132,38 @@ function gameReducer(state, action) {
         players: [],
         gameState: GAME_STATES.LOBBY,
         currentPage: 'lobby',
+      };
+
+    case 'SHOW_TURN_REPORT':
+      return {
+        ...state,
+        turnReport: action.payload.report,
+        showTurnReport: true,
+        reportConfirmations: action.payload.confirmations || { [state.playerId]: false },
+      };
+
+    case 'HIDE_TURN_REPORT':
+      return {
+        ...state,
+        showTurnReport: false,
+      };
+
+    case 'UPDATE_REPORT_CONFIRMATIONS':
+      return {
+        ...state,
+        reportConfirmations: {
+          ...state.reportConfirmations,
+          ...action.payload,
+        },
+      };
+
+    case 'MY_CONFIRM_REPORT':
+      return {
+        ...state,
+        reportConfirmations: {
+          ...state.reportConfirmations,
+          [state.playerId]: true,
+        },
       };
 
     default:
@@ -224,6 +259,27 @@ export function GameProvider({ children }) {
       }
     });
 
+    const unlistenTurnReport = ws.on(MESSAGE_TYPES.TURN_REPORT, (data) => {
+      if (data && data.player_id === ws.playerId) {
+        dispatch({
+          type: 'SHOW_TURN_REPORT',
+          payload: {
+            report: data,
+            confirmations: { [ws.playerId]: false },
+          },
+        });
+      }
+    });
+
+    const unlistenTurnReportAck = ws.on(MESSAGE_TYPES.TURN_REPORT_ACK, (data) => {
+      if (data && data.player_id) {
+        dispatch({
+          type: 'UPDATE_REPORT_CONFIRMATIONS',
+          payload: { [data.player_id]: data.confirmed },
+        });
+      }
+    });
+
     const unlistenEvent = ws.on(MESSAGE_TYPES.EVENT, (data) => {
       if (data && data.event === 'game_started') {
         dispatch({ type: 'ADD_EVENT', payload: { event: 'game_started', message: '游戏开始！' } });
@@ -279,6 +335,8 @@ export function GameProvider({ children }) {
       ws.off('open', handleOpen);
       ws.off('close', handleClose);
       unlistenGameState();
+      unlistenTurnReport();
+      unlistenTurnReportAck();
       unlistenEvent();
       unlistenSystem();
       unlistenError();
@@ -454,6 +512,14 @@ export function GameProvider({ children }) {
     dispatch({ type: 'SET_PAGE', payload: page });
   }, []);
 
+  const confirmTurnReport = useCallback(() => {
+    if (!state.reportConfirmations || !state.reportConfirmations[state.playerId]) {
+      ws.sendPlayerAction(PLAYER_ACTIONS.CONFIRM_TURN_REPORT, {});
+      dispatch({ type: 'MY_CONFIRM_REPORT' });
+    }
+    dispatch({ type: 'HIDE_TURN_REPORT' });
+  }, [state.reportConfirmations, state.playerId]);
+
   const value = {
     state,
     connect,
@@ -477,6 +543,7 @@ export function GameProvider({ children }) {
     unready,
     selectCelestial,
     setPage,
+    confirmTurnReport,
     getAllCelestials: () => getAllCelestials(state.gameMap),
   };
 

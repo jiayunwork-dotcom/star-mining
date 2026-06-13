@@ -7,6 +7,7 @@ import TechPanel from '../components/TechPanel.jsx';
 import DiplomacyPanel from '../components/DiplomacyPanel.jsx';
 import EventLog from '../components/EventLog.jsx';
 import TurnControl from '../components/TurnControl.jsx';
+import TurnReportModal from '../components/TurnReportModal.jsx';
 import { useGameState } from '../hooks/useGameState';
 
 const sidebarTabs = [
@@ -18,7 +19,7 @@ const sidebarTabs = [
 ];
 
 function GamePage() {
-  const { leaveRoom } = useGameState();
+  const { state, leaveRoom, confirmTurnReport } = useGameState();
   const [activeTab, setActiveTab] = useState('company');
 
   const ActivePanel = sidebarTabs.find((t) => t.id === activeTab)?.component || CompanyPanel;
@@ -63,6 +64,15 @@ function GamePage() {
           <EventLog />
         </div>
       </div>
+
+      {state.showTurnReport && state.turnReport && (
+        <TurnReportModal
+          report={state.turnReport}
+          onConfirm={confirmTurnReport}
+          confirmations={state.reportConfirmations}
+          players={state.players}
+        />
+      )}
     </div>
   );
 }

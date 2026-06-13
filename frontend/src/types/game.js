@@ -6,6 +6,8 @@ export const MESSAGE_TYPES = {
   HEARTBEAT: 'heartbeat',
   SYSTEM: 'system',
   ERROR: 'error',
+  TURN_REPORT: 'turn_report',
+  TURN_REPORT_ACK: 'turn_report_ack',
 };
 
 export const PLAYER_ACTIONS = {
@@ -22,6 +24,7 @@ export const PLAYER_ACTIONS = {
   LEAVE_ROOM: 'leave_room',
   LIST_ROOMS: 'list_rooms',
   START_GAME: 'start_game',
+  CONFIRM_TURN_REPORT: 'confirm_turn_report',
 };
 
 export const CELESTIAL_TYPES = {
