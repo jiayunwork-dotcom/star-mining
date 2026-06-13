@@ -297,32 +297,92 @@ function TurnReportModal({ report, onConfirm, confirmations, players }) {
             )}
           </section>
 
-          {report.diplomacy && report.diplomacy.changes && report.diplomacy.changes.length > 0 && (
+          {report.diplomacy && ((report.diplomacy.changes && report.diplomacy.changes.length > 0) || (report.diplomacy.war_events && report.diplomacy.war_events.length > 0) || (report.diplomacy.sanction_events && report.diplomacy.sanction_events.length > 0)) && (
             <section className="report-section">
               <h3 className="report-section-title">
                 <span className="section-icon">🤝</span> 外交动态
               </h3>
-              <div className="diplomacy-report-list">
-                {report.diplomacy.changes.map((dc, idx) => {
-                  const playerName = playerMap[dc.player_id]
-                    ? (playerMap[dc.player_id].company_name || playerMap[dc.player_id].name)
-                    : dc.player_id;
-                  const isPositive = dc.change > 0;
-                  const changeStr = isPositive ? `+${dc.change}` : `${dc.change}`;
-                  return (
-                    <div key={idx} className="diplomacy-report-item">
-                      <span className="diplomacy-report-player">{playerName}</span>
-                      <span className="diplomacy-report-reason">{dc.reason}</span>
-                      <span className={`diplomacy-report-change ${isPositive ? 'text-positive' : 'text-negative'}`}>
-                        {changeStr}
-                      </span>
-                      <span className="diplomacy-report-values">
-                        {dc.old_value} → {dc.new_value}
-                      </span>
+              {report.diplomacy.changes && report.diplomacy.changes.length > 0 && (
+                <div className="diplomacy-report-list">
+                  {report.diplomacy.changes.map((dc, idx) => {
+                    const playerName = playerMap[dc.player_id]
+                      ? (playerMap[dc.player_id].company_name || playerMap[dc.player_id].name)
+                      : dc.player_id;
+                    const isPositive = dc.change > 0;
+                    const changeStr = isPositive ? `+${dc.change}` : `${dc.change}`;
+                    return (
+                      <div key={idx} className="diplomacy-report-item">
+                        <span className="diplomacy-report-player">{playerName}</span>
+                        <span className="diplomacy-report-reason">{dc.reason}</span>
+                        <span className={`diplomacy-report-change ${isPositive ? 'text-positive' : 'text-negative'}`}>
+                          {changeStr}
+                        </span>
+                        <span className="diplomacy-report-values">
+                          {dc.old_value} → {dc.new_value}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {report.diplomacy.war_events && report.diplomacy.war_events.length > 0 && (
+                <div className="war-report-list" style={{ marginTop: '8px' }}>
+                  <h4 style={{ fontSize: '13px', color: '#FF6666', marginBottom: '4px' }}>战争事件</h4>
+                  {report.diplomacy.war_events.map((we, idx) => (
+                    <div key={idx} className="war-report-item" style={{ padding: '6px 8px', marginBottom: '4px', background: 'rgba(255,68,68,0.08)', borderRadius: '4px', fontSize: '13px' }}>
+                      {we.event_type === 'war_declared' && (
+                        <span>
+                          ⚔️ 宣战: {we.attacker_alliance_name || '攻方'} vs {we.defender_alliance_name || '守方'}
+                        </span>
+                      )}
+                      {we.event_type === 'surrender_suggestion' && (
+                        <span>
+                          ⚠️ 投降建议: 一方联盟总资产已低于对方30%
+                        </span>
+                      )}
+                      {we.event_type === 'surrender' && (
+                        <span>
+                          🏳️ 投降: {we.surrender_alliance_name || '投降方'} 已投降
+                        </span>
+                      )}
+                      {we.reparations && we.reparations.length > 0 && (
+                        <div style={{ marginTop: '4px', fontSize: '12px', color: '#AAA' }}>
+                          赔偿明细:
+                          {we.reparations.map((r, ri) => (
+                            <div key={ri}>
+                              {r.payer_name} → {r.payee_name}: {formatNumber(r.amount)}¢
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
+              {report.diplomacy.sanction_events && report.diplomacy.sanction_events.length > 0 && (
+                <div className="sanction-report-list" style={{ marginTop: '8px' }}>
+                  <h4 style={{ fontSize: '13px', color: '#FF8844', marginBottom: '4px' }}>制裁事件</h4>
+                  {report.diplomacy.sanction_events.map((se, idx) => (
+                    <div key={idx} className="sanction-report-item" style={{ padding: '6px 8px', marginBottom: '4px', background: 'rgba(255,136,68,0.08)', borderRadius: '4px', fontSize: '13px' }}>
+                      {se.event_type === 'sanction_activated' && (
+                        <span>
+                          🚫 制裁生效: {se.target_name || se.target_id} 被制裁 (发起人: {se.initiator_name || se.initiator_id})
+                        </span>
+                      )}
+                      {se.event_type === 'sanction_expired' && (
+                        <span>
+                          ✅ 制裁解除: {se.target_name || se.target_id} 的制裁已到期
+                        </span>
+                      )}
+                      {se.event_type === 'sanction_maintenance' && (
+                        <span>
+                          💸 制裁维护费: {se.target_name || se.target_id} 扣除 {formatNumber(se.maintenance_fee)}¢
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 

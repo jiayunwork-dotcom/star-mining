@@ -808,3 +808,39 @@ func (r *Room) TransferLeadership(currentLeaderID string, newLeaderID string) er
 	}
 	return r.game.TransferLeadership(currentLeaderID, newLeaderID)
 }
+
+func (r *Room) DeclareWar(playerID string, targetAllianceID string) (*models.AllianceWar, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.DeclareWar(playerID, targetAllianceID)
+}
+
+func (r *Room) SurrenderWar(playerID string, warID string) ([]*models.ReparationDetail, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.SurrenderWar(playerID, warID)
+}
+
+func (r *Room) CreateSanctionProposal(playerID string, targetPlayerID string) (*models.SanctionProposal, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.CreateSanctionProposal(playerID, targetPlayerID)
+}
+
+func (r *Room) SecondSanctionProposal(playerID string, proposalID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.SecondSanctionProposal(playerID, proposalID)
+}

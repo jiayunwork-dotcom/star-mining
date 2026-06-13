@@ -45,6 +45,9 @@ const initialState = {
   diplomacyRelations: [],
   playerCooldowns: [],
   allianceInvites: [],
+  allianceWars: [],
+  sanctionProposals: [],
+  activeSanctions: [],
   gameOver: false,
   winnerId: '',
   maxTurns: 60,
@@ -223,6 +226,9 @@ function parseGameState(data) {
   if (gameData.joint_military_actions !== undefined) result.jointMilitaryActions = gameData.joint_military_actions;
   if (gameData.diplomacy_relations !== undefined) result.diplomacyRelations = gameData.diplomacy_relations;
   if (gameData.player_cooldowns !== undefined) result.playerCooldowns = gameData.player_cooldowns;
+  if (gameData.alliance_wars !== undefined) result.allianceWars = gameData.alliance_wars;
+  if (gameData.sanction_proposals !== undefined) result.sanctionProposals = gameData.sanction_proposals;
+  if (gameData.active_sanctions !== undefined) result.activeSanctions = gameData.active_sanctions;
 
   if (data.players && Array.isArray(data.players)) {
     result.players = data.players;
@@ -615,6 +621,22 @@ export function GameProvider({ children }) {
     ws.sendPlayerAction(PLAYER_ACTIONS.TRANSFER_LEADERSHIP, { new_leader_id: newLeaderId });
   }, []);
 
+  const declareWar = useCallback((targetAllianceId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.DECLARE_WAR, { target_alliance_id: targetAllianceId });
+  }, []);
+
+  const surrenderWar = useCallback((warId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.SURRENDER_WAR, { war_id: warId });
+  }, []);
+
+  const createSanctionProposal = useCallback((targetPlayerId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.CREATE_SANCTION_PROPOSAL, { target_player_id: targetPlayerId });
+  }, []);
+
+  const secondSanctionProposal = useCallback((proposalId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.SECOND_SANCTION_PROPOSAL, { proposal_id: proposalId });
+  }, []);
+
   const value = {
     state,
     connect,
@@ -652,6 +674,10 @@ export function GameProvider({ children }) {
     joinMilitaryAction,
     declineMilitaryAction,
     transferLeadership,
+    declareWar,
+    surrenderWar,
+    createSanctionProposal,
+    secondSanctionProposal,
     getAllCelestials: () => getAllCelestials(state.gameMap),
   };
 

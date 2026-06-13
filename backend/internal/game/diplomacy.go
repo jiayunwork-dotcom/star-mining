@@ -20,6 +20,12 @@ const (
 	HostileThreshold          = 20.0
 	FriendlyThreshold         = 70.0
 	AllianceRelationCap       = 80.0
+	WarDeclareThreshold       = 30.0
+	SanctionRequiredSeconders = 2
+	SanctionDuration          = 8
+	SanctionProposalExpiry    = 2
+	SanctionMaintenanceRate   = 0.05
+	SanctionFeeMultiplier     = 2.0
 )
 
 var AllianceColors = []models.AllianceColor{
@@ -140,6 +146,11 @@ func AcceptAllianceInvite(state *models.GameState, allianceID string, playerID s
 		return fmt.Errorf("你已在其他联盟中")
 	}
 
+	if IsPlayerSanctioned(state, playerID) {
+		delete(alliance.InviteExpiry, playerID)
+		return fmt.Errorf("被制裁的玩家不能加入联盟")
+	}
+
 	alliance.MemberIDs = append(alliance.MemberIDs, playerID)
 	delete(alliance.InviteExpiry, playerID)
 	return nil
@@ -253,6 +264,10 @@ func CreateTradeAgreement(state *models.GameState, playerID1 string, playerID2 s
 		return nil, fmt.Errorf("非联盟成员之间不能签订贸易协定")
 	}
 
+	if ArePlayersAtWar(state, playerID1, playerID2) {
+		return nil, fmt.Errorf("交战期间不能签订贸易协定")
+	}
+
 	for _, ta := range state.TradeAgreements {
 		if ta.Status == models.TradeAgreementActive {
 			if (ta.PlayerID1 == playerID1 && ta.PlayerID2 == playerID2) ||
@@ -302,10 +317,14 @@ func HasActiveTradeAgreement(state *models.GameState, playerID1 string, playerID
 }
 
 func GetTradeFeeMultiplier(state *models.GameState, buyerID string, sellerID string) float64 {
+	mult := 1.0
 	if HasActiveTradeAgreement(state, buyerID, sellerID) {
-		return 0.5
+		mult = 0.5
 	}
-	return 1.0
+	if IsPlayerSanctioned(state, buyerID) {
+		mult *= SanctionFeeMultiplier
+	}
+	return mult
 }
 
 func InitiateJointMilitaryAction(state *models.GameState, initiatorID string, targetPlayerID string, targetBodyID string) (*models.JointMilitaryAction, error) {
@@ -319,6 +338,14 @@ func InitiateJointMilitaryAction(state *models.GameState, initiatorID string, ta
 
 	if AreAllies(state, initiatorID, targetPlayerID) {
 		return nil, fmt.Errorf("不能对盟友发起军事行动")
+	}
+
+	activeWar := FindActiveWarForAlliance(state, alliance.ID)
+	if activeWar != nil {
+		targetAlliance := FindPlayerAlliance(state, targetPlayerID)
+		if targetAlliance == nil || (targetAlliance.ID != activeWar.AttackerAllianceID && targetAlliance.ID != activeWar.DefenderAllianceID) {
+			return nil, fmt.Errorf("战争期间只能对交战联盟发起联合军事行动")
+		}
 	}
 
 	participants := make([]*models.MilitaryParticipant, 0)
@@ -416,6 +443,10 @@ func GetDiplomacyValue(state *models.GameState, player1ID string, player2ID stri
 }
 
 func ModifyDiplomacyValue(state *models.GameState, player1ID string, player2ID string, delta float64, reason string) *models.DiplomacyChange {
+	if ArePlayersAtWar(state, player1ID, player2ID) {
+		return nil
+	}
+
 	for _, r := range state.DiplomacyRelations {
 		if (r.Player1ID == player1ID && r.Player2ID == player2ID) ||
 			(r.Player1ID == player2ID && r.Player2ID == player1ID) {
@@ -544,6 +575,9 @@ func ProcessDiplomacyTurn(state *models.GameState) []*models.DiplomacyChange {
 		}
 		for i := 0; i < len(alliance.MemberIDs); i++ {
 			for j := i + 1; j < len(alliance.MemberIDs); j++ {
+				if ArePlayersAtWar(state, alliance.MemberIDs[i], alliance.MemberIDs[j]) {
+					continue
+				}
 				currentValue := GetDiplomacyValue(state, alliance.MemberIDs[i], alliance.MemberIDs[j])
 				if currentValue >= AllianceRelationCap {
 					continue
@@ -569,6 +603,13 @@ func ProcessDiplomacyTurn(state *models.GameState) []*models.DiplomacyChange {
 		}
 	}
 
+	for _, war := range state.AllianceWars {
+		if war.Status != models.WarActive {
+			continue
+		}
+		cancelTradeAgreementsBetweenAlliances(state, war.AttackerAllianceID, war.DefenderAllianceID)
+	}
+
 	for _, ta := range state.TradeAgreements {
 		if ta.Status == models.TradeAgreementActive && state.Turn >= ta.ExpiryTurn {
 			ta.Status = models.TradeAgreementExpired
@@ -591,6 +632,9 @@ func ProcessDiplomacyTurn(state *models.GameState) []*models.DiplomacyChange {
 			}
 		}
 	}
+
+	ProcessExpiredSanctionProposals(state)
+	ProcessActiveSanctions(state)
 
 	ProcessExpiredInvites(state)
 
@@ -907,4 +951,475 @@ func TransferLeadership(state *models.GameState, currentLeaderID string, newLead
 
 	alliance.LeaderID = newLeaderID
 	return nil
+}
+
+func DeclareWar(state *models.GameState, initiatorID string, targetAllianceID string) (*models.AllianceWar, error) {
+	initiatorAlliance := FindPlayerAlliance(state, initiatorID)
+	if initiatorAlliance == nil {
+		return nil, fmt.Errorf("你不在任何联盟中")
+	}
+	if initiatorAlliance.LeaderID != initiatorID {
+		return nil, fmt.Errorf("只有盟主可以宣战")
+	}
+
+	targetAlliance := FindAllianceByID(state, targetAllianceID)
+	if targetAlliance == nil || targetAlliance.Status != models.AllianceActive {
+		return nil, fmt.Errorf("目标联盟不存在或已解散")
+	}
+
+	if initiatorAlliance.ID == targetAllianceID {
+		return nil, fmt.Errorf("不能对自己联盟宣战")
+	}
+
+	activeWar := FindActiveWarBetweenAlliances(state, initiatorAlliance.ID, targetAllianceID)
+	if activeWar != nil {
+		return nil, fmt.Errorf("双方已在战争中")
+	}
+
+	avgDiplomacy := calculateAverageDiplomacyBetweenAlliances(state, initiatorAlliance, targetAlliance)
+	if avgDiplomacy >= WarDeclareThreshold {
+		return nil, fmt.Errorf("外交关系平均值(%.1f)未低于%.0f，无法宣战", avgDiplomacy, WarDeclareThreshold)
+	}
+
+	war := &models.AllianceWar{
+		ID:                  fmt.Sprintf("war-%d-%s-vs-%s", state.Turn, initiatorAlliance.ID, targetAllianceID),
+		AttackerAllianceID:  initiatorAlliance.ID,
+		DefenderAllianceID:  targetAllianceID,
+		DeclaredTurn:        state.Turn,
+		Status:              models.WarActive,
+	}
+
+	state.AllianceWars = append(state.AllianceWars, war)
+
+	lockDiplomacyBetweenAlliances(state, initiatorAlliance, targetAlliance)
+
+	return war, nil
+}
+
+func SurrenderWar(state *models.GameState, surrenderLeaderID string, warID string) ([]*models.ReparationDetail, error) {
+	surrenderAlliance := FindPlayerAlliance(state, surrenderLeaderID)
+	if surrenderAlliance == nil {
+		return nil, fmt.Errorf("你不在任何联盟中")
+	}
+	if surrenderAlliance.LeaderID != surrenderLeaderID {
+		return nil, fmt.Errorf("只有盟主可以投降")
+	}
+
+	var war *models.AllianceWar
+	for _, w := range state.AllianceWars {
+		if w.ID == warID && w.Status == models.WarActive {
+			war = w
+			break
+		}
+	}
+	if war == nil {
+		return nil, fmt.Errorf("战争不存在或已结束")
+	}
+
+	if war.AttackerAllianceID != surrenderAlliance.ID && war.DefenderAllianceID != surrenderAlliance.ID {
+		return nil, fmt.Errorf("你的联盟不是交战方")
+	}
+
+	var winnerAllianceID string
+	if war.AttackerAllianceID == surrenderAlliance.ID {
+		winnerAllianceID = war.DefenderAllianceID
+	} else {
+		winnerAllianceID = war.AttackerAllianceID
+	}
+
+	winnerAlliance := FindAllianceByID(state, winnerAllianceID)
+	if winnerAlliance == nil {
+		return nil, fmt.Errorf("胜方联盟不存在")
+	}
+
+	reparations := calculateReparations(state, surrenderAlliance, winnerAlliance)
+
+	war.Status = models.WarSurrendered
+	war.SurrenderedAllianceID = surrenderAlliance.ID
+	war.SurrenderTurn = state.Turn
+
+	return reparations, nil
+}
+
+func ArePlayersAtWar(state *models.GameState, player1ID string, player2ID string) bool {
+	a1 := FindPlayerAlliance(state, player1ID)
+	if a1 == nil {
+		return false
+	}
+	a2 := FindPlayerAlliance(state, player2ID)
+	if a2 == nil {
+		return false
+	}
+	if a1.ID == a2.ID {
+		return false
+	}
+	return FindActiveWarBetweenAlliances(state, a1.ID, a2.ID) != nil
+}
+
+func FindActiveWarBetweenAlliances(state *models.GameState, allianceID1 string, allianceID2 string) *models.AllianceWar {
+	for _, war := range state.AllianceWars {
+		if war.Status != models.WarActive {
+			continue
+		}
+		if (war.AttackerAllianceID == allianceID1 && war.DefenderAllianceID == allianceID2) ||
+			(war.AttackerAllianceID == allianceID2 && war.DefenderAllianceID == allianceID1) {
+			return war
+		}
+	}
+	return nil
+}
+
+func FindActiveWarForAlliance(state *models.GameState, allianceID string) *models.AllianceWar {
+	for _, war := range state.AllianceWars {
+		if war.Status != models.WarActive {
+			continue
+		}
+		if war.AttackerAllianceID == allianceID || war.DefenderAllianceID == allianceID {
+			return war
+		}
+	}
+	return nil
+}
+
+func FindActiveWarForPlayer(state *models.GameState, playerID string) *models.AllianceWar {
+	alliance := FindPlayerAlliance(state, playerID)
+	if alliance == nil {
+		return nil
+	}
+	return FindActiveWarForAlliance(state, alliance.ID)
+}
+
+func calculateAverageDiplomacyBetweenAlliances(state *models.GameState, alliance1 *models.Alliance, alliance2 *models.Alliance) float64 {
+	totalValue := 0.0
+	pairCount := 0
+
+	for _, m1 := range alliance1.MemberIDs {
+		for _, m2 := range alliance2.MemberIDs {
+			totalValue += GetDiplomacyValue(state, m1, m2)
+			pairCount++
+		}
+	}
+
+	if pairCount == 0 {
+		return InitialDiplomacyValue
+	}
+	return totalValue / float64(pairCount)
+}
+
+func lockDiplomacyBetweenAlliances(state *models.GameState, alliance1 *models.Alliance, alliance2 *models.Alliance) {
+	for _, m1 := range alliance1.MemberIDs {
+		for _, m2 := range alliance2.MemberIDs {
+			for _, r := range state.DiplomacyRelations {
+				if (r.Player1ID == m1 && r.Player2ID == m2) ||
+					(r.Player1ID == m2 && r.Player2ID == m1) {
+					r.Value = 0
+					break
+				}
+			}
+		}
+	}
+}
+
+func cancelTradeAgreementsBetweenAlliances(state *models.GameState, allianceID1 string, allianceID2 string) {
+	a1 := FindAllianceByID(state, allianceID1)
+	a2 := FindAllianceByID(state, allianceID2)
+	if a1 == nil || a2 == nil {
+		return
+	}
+
+	memberSet := make(map[string]bool)
+	for _, m := range a2.MemberIDs {
+		memberSet[m] = true
+	}
+
+	for _, ta := range state.TradeAgreements {
+		if ta.Status != models.TradeAgreementActive {
+			continue
+		}
+		if ta.AllianceID != allianceID1 && ta.AllianceID != allianceID2 {
+			p1InA1 := false
+			p2InA1 := false
+			p1InA2 := memberSet[ta.PlayerID1]
+			p2InA2 := memberSet[ta.PlayerID2]
+			for _, m := range a1.MemberIDs {
+				if m == ta.PlayerID1 {
+					p1InA1 = true
+				}
+				if m == ta.PlayerID2 {
+					p2InA1 = true
+				}
+			}
+			if (p1InA1 && p2InA2) || (p2InA1 && p1InA2) {
+				ta.Status = models.TradeAgreementExpired
+			}
+			continue
+		}
+		if ta.AllianceID == allianceID1 {
+			if memberSet[ta.PlayerID1] || memberSet[ta.PlayerID2] {
+				ta.Status = models.TradeAgreementExpired
+			}
+		}
+		if ta.AllianceID == allianceID2 {
+			isInA1 := false
+			for _, m := range a1.MemberIDs {
+				if m == ta.PlayerID1 || m == ta.PlayerID2 {
+					isInA1 = true
+					break
+				}
+			}
+			if isInA1 {
+				ta.Status = models.TradeAgreementExpired
+			}
+		}
+	}
+}
+
+func calculateReparations(state *models.GameState, loserAlliance *models.Alliance, winnerAlliance *models.Alliance) []*models.ReparationDetail {
+	reparations := make([]*models.ReparationDetail, 0)
+
+	individualPayments := make(map[string]float64)
+	for _, memberID := range loserAlliance.MemberIDs {
+		player := findPlayerInState(state, memberID)
+		if player == nil || player.IsBankrupt || player.IsDefeated {
+			continue
+		}
+		payment := player.Credits * 0.10
+		individualPayments[memberID] = payment
+		player.Credits -= payment
+	}
+
+	totalPool := 0.0
+	for _, amt := range individualPayments {
+		totalPool += amt
+	}
+
+	activeWinners := make([]string, 0)
+	for _, memberID := range winnerAlliance.MemberIDs {
+		player := findPlayerInState(state, memberID)
+		if player == nil || player.IsBankrupt || player.IsDefeated {
+			continue
+		}
+		activeWinners = append(activeWinners, memberID)
+	}
+
+	if len(activeWinners) == 0 || totalPool == 0 {
+		return reparations
+	}
+
+	sharePerWinner := totalPool / float64(len(activeWinners))
+	for _, winnerID := range activeWinners {
+		player := findPlayerInState(state, winnerID)
+		if player != nil {
+			player.Credits += sharePerWinner
+		}
+	}
+
+	for loserID, payment := range individualPayments {
+		loserPlayer := findPlayerInState(state, loserID)
+		loserName := loserID
+		if loserPlayer != nil {
+			loserName = loserPlayer.Name
+		}
+		for _, winnerID := range activeWinners {
+			winnerPlayer := findPlayerInState(state, winnerID)
+			winnerName := winnerID
+			if winnerPlayer != nil {
+				winnerName = winnerPlayer.Name
+			}
+			reparations = append(reparations, &models.ReparationDetail{
+				PayerID:   loserID,
+				PayerName: loserName,
+				PayeeID:   winnerID,
+				PayeeName: winnerName,
+				Amount:    sharePerWinner / float64(len(individualPayments)),
+			})
+		}
+	}
+
+	return reparations
+}
+
+func CheckSurrenderSuggestion(state *models.GameState, war *models.AllianceWar) (string, bool) {
+	attackerAlliance := FindAllianceByID(state, war.AttackerAllianceID)
+	defenderAlliance := FindAllianceByID(state, war.DefenderAllianceID)
+	if attackerAlliance == nil || defenderAlliance == nil {
+		return "", false
+	}
+
+	attackerAssets := calculateAllianceTotalAssets(state, attackerAlliance)
+	defenderAssets := calculateAllianceTotalAssets(state, defenderAlliance)
+
+	if attackerAssets > 0 && defenderAssets < attackerAssets*0.30 {
+		return war.DefenderAllianceID, true
+	}
+	if defenderAssets > 0 && attackerAssets < defenderAssets*0.30 {
+		return war.AttackerAllianceID, true
+	}
+	return "", false
+}
+
+func calculateAllianceTotalAssets(state *models.GameState, alliance *models.Alliance) float64 {
+	total := 0.0
+	for _, memberID := range alliance.MemberIDs {
+		player := findPlayerInState(state, memberID)
+		if player != nil && !player.IsBankrupt && !player.IsDefeated {
+			total += CalculateNetWorth(player, state.Exchanges)
+		}
+	}
+	return total
+}
+
+func CreateSanctionProposal(state *models.GameState, initiatorID string, targetID string) (*models.SanctionProposal, error) {
+	if initiatorID == targetID {
+		return nil, fmt.Errorf("不能对自己发起制裁")
+	}
+
+	for _, s := range state.ActiveSanctions {
+		if s.TargetID == targetID {
+			return nil, fmt.Errorf("该玩家已被制裁中，不能重复制裁")
+		}
+	}
+
+	for _, sp := range state.SanctionProposals {
+		if sp.TargetID == targetID && sp.Status == models.SanctionProposalPending {
+			return nil, fmt.Errorf("该玩家已有待附议的制裁提案")
+		}
+	}
+
+	proposal := &models.SanctionProposal{
+		ID:          fmt.Sprintf("sanction-proposal-%d-%s", state.Turn, initiatorID[:8]),
+		InitiatorID: initiatorID,
+		TargetID:    targetID,
+		SeconderIDs: make([]string, 0),
+		Status:      models.SanctionProposalPending,
+		CreatedTurn: state.Turn,
+		ExpiryTurn:  state.Turn + SanctionProposalExpiry,
+	}
+
+	state.SanctionProposals = append(state.SanctionProposals, proposal)
+	return proposal, nil
+}
+
+func SecondSanctionProposal(state *models.GameState, seconderID string, proposalID string) error {
+	var proposal *models.SanctionProposal
+	for _, sp := range state.SanctionProposals {
+		if sp.ID == proposalID {
+			proposal = sp
+			break
+		}
+	}
+	if proposal == nil {
+		return fmt.Errorf("制裁提案不存在")
+	}
+	if proposal.Status != models.SanctionProposalPending {
+		return fmt.Errorf("制裁提案不在待附议状态")
+	}
+	if proposal.InitiatorID == seconderID {
+		return fmt.Errorf("发起人不能附议自己的提案")
+	}
+	if proposal.TargetID == seconderID {
+		return fmt.Errorf("被制裁目标不能附议")
+	}
+	for _, sid := range proposal.SeconderIDs {
+		if sid == seconderID {
+			return fmt.Errorf("你已经附议过该提案")
+		}
+	}
+
+	proposal.SeconderIDs = append(proposal.SeconderIDs, seconderID)
+
+	ModifyDiplomacyValue(state, seconderID, proposal.TargetID, -10.0, "附议制裁提案")
+
+	if len(proposal.SeconderIDs) >= SanctionRequiredSeconders {
+		proposal.Status = models.SanctionProposalActive
+		activateSanction(state, proposal)
+	}
+
+	return nil
+}
+
+func activateSanction(state *models.GameState, proposal *models.SanctionProposal) {
+	sanction := &models.Sanction{
+		ID:          fmt.Sprintf("sanction-%d-%s", state.Turn, proposal.TargetID[:8]),
+		TargetID:    proposal.TargetID,
+		InitiatorID: proposal.InitiatorID,
+		CreatedTurn: state.Turn,
+		ExpiryTurn:  state.Turn + SanctionDuration,
+		TurnsLeft:   SanctionDuration,
+	}
+	state.ActiveSanctions = append(state.ActiveSanctions, sanction)
+
+	ModifyDiplomacyValue(state, proposal.InitiatorID, proposal.TargetID, -10.0, "发起制裁")
+}
+
+func ProcessExpiredSanctionProposals(state *models.GameState) {
+	for _, sp := range state.SanctionProposals {
+		if sp.Status != models.SanctionProposalPending {
+			continue
+		}
+		if state.Turn >= sp.ExpiryTurn {
+			sp.Status = models.SanctionProposalExpired
+		}
+	}
+}
+
+func ProcessActiveSanctions(state *models.GameState) []*models.SanctionEvent {
+	events := make([]*models.SanctionEvent, 0)
+
+	active := make([]*models.Sanction, 0, len(state.ActiveSanctions))
+	for _, s := range state.ActiveSanctions {
+		s.TurnsLeft--
+		if s.TurnsLeft <= 0 {
+			events = append(events, &models.SanctionEvent{
+				SanctionID: s.ID,
+				EventType:  "sanction_expired",
+				TargetID:   s.TargetID,
+				InitiatorID: s.InitiatorID,
+				Turn:       state.Turn,
+			})
+			continue
+		}
+
+		player := findPlayerInState(state, s.TargetID)
+		if player != nil && !player.IsBankrupt && !player.IsDefeated {
+			fee := player.Credits * SanctionMaintenanceRate
+			if fee > 0 {
+				player.Credits -= fee
+				events = append(events, &models.SanctionEvent{
+					SanctionID:    s.ID,
+					EventType:     "sanction_maintenance",
+					TargetID:      s.TargetID,
+					TargetName:    player.Name,
+					InitiatorID:   s.InitiatorID,
+					Turn:          state.Turn,
+					MaintenanceFee: fee,
+				})
+			}
+		}
+
+		active = append(active, s)
+	}
+	state.ActiveSanctions = active
+
+	return events
+}
+
+func IsPlayerSanctioned(state *models.GameState, playerID string) bool {
+	for _, s := range state.ActiveSanctions {
+		if s.TargetID == playerID {
+			return true
+		}
+	}
+	return false
+}
+
+func GetSanctionFeeMultiplier(state *models.GameState, playerID string) float64 {
+	if IsPlayerSanctioned(state, playerID) {
+		return SanctionFeeMultiplier
+	}
+	return 1.0
+}
+
+func CanPlayerJoinAlliance(state *models.GameState, playerID string) bool {
+	return !IsPlayerSanctioned(state, playerID)
 }

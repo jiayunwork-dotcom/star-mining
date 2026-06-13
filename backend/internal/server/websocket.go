@@ -296,6 +296,14 @@ func (c *WebSocketConn) handlePlayerAction(msg *Message, room *Room) {
 		execErr = c.handleDeclineMilitaryAction(action.Params, room)
 	case ActionTransferLeadership:
 		execErr = c.handleTransferLeadership(action.Params, room)
+	case ActionDeclareWar:
+		execErr = c.handleDeclareWar(action.Params, room)
+	case ActionSurrenderWar:
+		execErr = c.handleSurrenderWar(action.Params, room)
+	case ActionCreateSanctionProposal:
+		execErr = c.handleCreateSanctionProposal(action.Params, room)
+	case ActionSecondSanctionProposal:
+		execErr = c.handleSecondSanctionProposal(action.Params, room)
 	case ActionGetGameState:
 		c.handleGameStateRequest(room)
 		return
@@ -828,6 +836,41 @@ func (c *WebSocketConn) handleTransferLeadership(params map[string]interface{}, 
 		return err
 	}
 	return room.TransferLeadership(c.playerID, newLeaderID)
+}
+
+func (c *WebSocketConn) handleDeclareWar(params map[string]interface{}, room *Room) error {
+	targetAllianceID, err := getStringParam(params, "target_alliance_id")
+	if err != nil {
+		return err
+	}
+	_, err2 := room.DeclareWar(c.playerID, targetAllianceID)
+	return err2
+}
+
+func (c *WebSocketConn) handleSurrenderWar(params map[string]interface{}, room *Room) error {
+	warID, err := getStringParam(params, "war_id")
+	if err != nil {
+		return err
+	}
+	_, err2 := room.SurrenderWar(c.playerID, warID)
+	return err2
+}
+
+func (c *WebSocketConn) handleCreateSanctionProposal(params map[string]interface{}, room *Room) error {
+	targetPlayerID, err := getStringParam(params, "target_player_id")
+	if err != nil {
+		return err
+	}
+	_, err2 := room.CreateSanctionProposal(c.playerID, targetPlayerID)
+	return err2
+}
+
+func (c *WebSocketConn) handleSecondSanctionProposal(params map[string]interface{}, room *Room) error {
+	proposalID, err := getStringParam(params, "proposal_id")
+	if err != nil {
+		return err
+	}
+	return room.SecondSanctionProposal(c.playerID, proposalID)
 }
 
 func (c *WebSocketConn) handleChat(msg *Message, room *Room) {

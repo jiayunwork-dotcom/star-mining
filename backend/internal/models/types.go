@@ -489,8 +489,86 @@ type DiplomacyChange struct {
 	Reason    string  `json:"reason"`
 }
 
+type WarStatus string
+
+const (
+	WarActive    WarStatus = "active"
+	WarSurrendered WarStatus = "surrendered"
+)
+
+type AllianceWar struct {
+	ID              string    `json:"id"`
+	AttackerAllianceID string `json:"attacker_alliance_id"`
+	DefenderAllianceID string `json:"defender_alliance_id"`
+	DeclaredTurn    int       `json:"declared_turn"`
+	Status          WarStatus `json:"status"`
+	SurrenderedAllianceID string `json:"surrendered_alliance_id,omitempty"`
+	SurrenderTurn   int       `json:"surrender_turn,omitempty"`
+}
+
+type SanctionProposalStatus string
+
+const (
+	SanctionProposalPending  SanctionProposalStatus = "pending"
+	SanctionProposalActive   SanctionProposalStatus = "active"
+	SanctionProposalExpired  SanctionProposalStatus = "expired"
+	SanctionProposalRejected SanctionProposalStatus = "rejected"
+)
+
+type SanctionProposal struct {
+	ID           string                 `json:"id"`
+	InitiatorID  string                 `json:"initiator_id"`
+	TargetID     string                 `json:"target_id"`
+	SeconderIDs  []string               `json:"seconder_ids"`
+	Status       SanctionProposalStatus `json:"status"`
+	CreatedTurn  int                    `json:"created_turn"`
+	ExpiryTurn   int                    `json:"expiry_turn"`
+}
+
+type Sanction struct {
+	ID          string  `json:"id"`
+	TargetID    string  `json:"target_id"`
+	InitiatorID string  `json:"initiator_id"`
+	CreatedTurn int     `json:"created_turn"`
+	ExpiryTurn  int     `json:"expiry_turn"`
+	TurnsLeft   int     `json:"turns_left"`
+}
+
+type WarEvent struct {
+	WarID                string  `json:"war_id"`
+	EventType            string  `json:"event_type"`
+	AttackerAllianceName string  `json:"attacker_alliance_name,omitempty"`
+	DefenderAllianceName string  `json:"defender_alliance_name,omitempty"`
+	SurrenderAllianceName string `json:"surrender_alliance_name,omitempty"`
+	Turn                 int     `json:"turn"`
+	Reparations          []ReparationDetail `json:"reparations,omitempty"`
+	SurrenderSuggested   bool    `json:"surrender_suggested,omitempty"`
+	SurrenderAllianceID  string  `json:"surrender_alliance_id,omitempty"`
+}
+
+type ReparationDetail struct {
+	PayerID   string  `json:"payer_id"`
+	PayerName string  `json:"payer_name"`
+	PayeeID   string  `json:"payee_id"`
+	PayeeName string  `json:"payee_name"`
+	Amount    float64 `json:"amount"`
+}
+
+type SanctionEvent struct {
+	SanctionID    string  `json:"sanction_id"`
+	EventType     string  `json:"event_type"`
+	TargetID      string  `json:"target_id"`
+	TargetName    string  `json:"target_name"`
+	InitiatorID   string  `json:"initiator_id"`
+	InitiatorName string  `json:"initiator_name"`
+	Turn          int     `json:"turn"`
+	MaintenanceFee float64 `json:"maintenance_fee,omitempty"`
+}
+
 type DiplomacySection struct {
-	Changes []*DiplomacyChange `json:"changes"`
+	Changes       []*DiplomacyChange `json:"changes"`
+	WarEvents     []*WarEvent        `json:"war_events"`
+	SanctionEvents []*SanctionEvent  `json:"sanction_events"`
 }
 
 type PlayerCooldown struct {
@@ -523,11 +601,14 @@ type GameState struct {
 	RandomEvents        []*RandomEvent       `json:"random_events"`
 	Blockades           []*Blockade          `json:"blockades"`
 	Bids                []*Bid               `json:"bids"`
-	Alliances           []*Alliance          `json:"alliances"`
-	TradeAgreements     []*TradeAgreement    `json:"trade_agreements"`
+	Alliances           []*Alliance           `json:"alliances"`
+	TradeAgreements     []*TradeAgreement      `json:"trade_agreements"`
 	JointMilitaryActions []*JointMilitaryAction `json:"joint_military_actions"`
-	DiplomacyRelations  []*DiplomacyRelation `json:"diplomacy_relations"`
-	PlayerCooldowns     []*PlayerCooldown    `json:"player_cooldowns"`
+	DiplomacyRelations  []*DiplomacyRelation   `json:"diplomacy_relations"`
+	PlayerCooldowns     []*PlayerCooldown      `json:"player_cooldowns"`
+	AllianceWars        []*AllianceWar         `json:"alliance_wars"`
+	SanctionProposals   []*SanctionProposal    `json:"sanction_proposals"`
+	ActiveSanctions     []*Sanction            `json:"active_sanctions"`
 	Started             bool                 `json:"started"`
 	GameOver            bool                 `json:"game_over"`
 	WinnerID            string               `json:"winner_id"`

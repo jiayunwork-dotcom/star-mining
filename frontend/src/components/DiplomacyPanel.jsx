@@ -85,6 +85,10 @@ function DiplomacyPanel() {
     joinMilitaryAction,
     declineMilitaryAction,
     transferLeadership,
+    declareWar,
+    surrenderWar,
+    createSanctionProposal,
+    secondSanctionProposal,
   } = useGameState();
 
   const {
@@ -96,6 +100,9 @@ function DiplomacyPanel() {
     diplomacyRelations,
     playerCooldowns,
     allianceInvites,
+    allianceWars,
+    sanctionProposals,
+    activeSanctions,
   } = state;
 
   const [subTab, setSubTab] = useState('alliance');
@@ -107,11 +114,27 @@ function DiplomacyPanel() {
   const [militaryTarget, setMilitaryTarget] = useState('');
   const [militaryTargetBody, setMilitaryTargetBody] = useState('');
   const [selectedActionFleet, setSelectedActionFleet] = useState({});
+  const [declareWarTarget, setDeclareWarTarget] = useState('');
+  const [sanctionTarget, setSanctionTarget] = useState('');
 
   const myAlliance = (alliances || []).find(
     (a) => a.status === 'active' && (a.member_ids || []).includes(myPlayer?.id)
   );
   const isLeader = myAlliance && myAlliance.leader_id === myPlayer?.id;
+
+  const activeWar = (allianceWars || []).find(
+    (w) => w.status === 'active' && myAlliance && (w.attacker_alliance_id === myAlliance.id || w.defender_alliance_id === myAlliance.id)
+  );
+
+  const opponentAlliance = activeWar && myAlliance
+    ? (alliances || []).find((a) => a.id === (activeWar.attacker_alliance_id === myAlliance.id ? activeWar.defender_alliance_id : activeWar.attacker_alliance_id))
+    : null;
+
+  const warDuration = activeWar ? (state.turn - activeWar.declared_turn) : 0;
+
+  const otherActiveAlliances = (alliances || []).filter(
+    (a) => a.status === 'active' && a.id !== myAlliance?.id
+  );
 
   const myCooldown = (playerCooldowns || []).find((c) => c.player_id === myPlayer?.id);
   const isInCooldown = myCooldown && myCooldown.cooldown_turns > 0;
@@ -188,11 +211,35 @@ function DiplomacyPanel() {
     return (state.players || []).some((p) => p.id === id && p.connected !== false);
   };
 
+  const handleDeclareWar = () => {
+    if (!declareWarTarget) return;
+    declareWar(declareWarTarget);
+    setDeclareWarTarget('');
+  };
+
+  const handleSurrenderWar = () => {
+    if (!activeWar) return;
+    if (window.confirm('确定要投降？投降后所有成员将赔偿当前资金的10%给胜方。')) {
+      surrenderWar(activeWar.id);
+    }
+  };
+
+  const handleCreateSanction = () => {
+    if (!sanctionTarget) return;
+    createSanctionProposal(sanctionTarget);
+    setSanctionTarget('');
+  };
+
+  const handleSecondSanction = (proposalId) => {
+    secondSanctionProposal(proposalId);
+  };
+
   const subTabs = [
     { key: 'alliance', label: '联盟' },
     { key: 'relations', label: '外交关系' },
     { key: 'trade', label: '贸易协定' },
-    { key: 'military', label: '军事行动' },
+    { key: 'military', label: '战争与军事' },
+    { key: 'sanction', label: '制裁' },
   ];
 
   return (
@@ -538,6 +585,53 @@ function DiplomacyPanel() {
 
       {subTab === 'military' && (
         <div className="diplomacy-section">
+          {activeWar && (
+            <div className="war-status-area" style={{ marginBottom: '12px', padding: '10px', border: '1px solid #FF4444', borderRadius: '6px', background: 'rgba(255,68,68,0.1)' }}>
+              <h4 style={{ color: '#FF4444', marginBottom: '8px' }}>交战中</h4>
+              <div style={{ marginBottom: '4px' }}>
+                对手: <strong>{opponentAlliance ? opponentAlliance.name : '未知联盟'}</strong>
+              </div>
+              <div style={{ marginBottom: '4px' }}>
+                已持续: <strong>{warDuration} 回合</strong>
+              </div>
+              <div style={{ marginBottom: '4px' }}>
+                <span>双方资产对比</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '12px' }}>{myAlliance?.name}</span>
+                  <div style={{ flex: 1, height: '8px', background: '#333', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{ width: '50%', height: '100%', background: 'linear-gradient(90deg, #4488FF, #FF4444)', borderRadius: '4px' }} />
+                  </div>
+                  <span style={{ fontSize: '12px' }}>{opponentAlliance?.name}</span>
+                </div>
+              </div>
+              {isLeader && (
+                <button className="btn btn-danger btn-small" onClick={handleSurrenderWar} style={{ marginTop: '8px' }}>
+                  投降
+                </button>
+              )}
+            </div>
+          )}
+
+          {!activeWar && isLeader && otherActiveAlliances.length > 0 && (
+            <div className="declare-war-form" style={{ marginBottom: '12px', padding: '10px', border: '1px solid #FF8844', borderRadius: '6px' }}>
+              <h5 style={{ marginBottom: '6px' }}>宣战</h5>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <select value={declareWarTarget} onChange={(e) => setDeclareWarTarget(e.target.value)} className="diplomacy-select">
+                  <option value="">选择目标联盟</option>
+                  {otherActiveAlliances.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+                <button className="btn btn-danger btn-small" onClick={handleDeclareWar} disabled={!declareWarTarget}>
+                  宣战
+                </button>
+              </div>
+              <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+                宣战条件: 双方所有成员对的平均外交关系值低于30
+              </div>
+            </div>
+          )}
+
           <h4>联合军事行动</h4>
 
           {isLeader && (
@@ -681,6 +775,63 @@ function DiplomacyPanel() {
                 );
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {subTab === 'sanction' && (
+        <div className="diplomacy-section">
+          <h4>外交制裁</h4>
+
+          <div className="create-sanction-form" style={{ marginBottom: '12px' }}>
+            <h5>发起新制裁</h5>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <select value={sanctionTarget} onChange={(e) => setSanctionTarget(e.target.value)} className="diplomacy-select">
+                <option value="">选择目标玩家</option>
+                {(otherPlayers || []).map((p) => (
+                  <option key={p.id} value={p.id}>{p.company_name || p.name}</option>
+                ))}
+              </select>
+              <button className="btn btn-danger btn-small" onClick={handleCreateSanction} disabled={!sanctionTarget}>
+                发起制裁
+              </button>
+            </div>
+            <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+              需要2名其他玩家附议才能生效
+            </div>
+          </div>
+
+          {(activeSanctions || []).length > 0 && (
+            <div className="active-sanctions" style={{ marginBottom: '12px' }}>
+              <h5>生效中的制裁</h5>
+              {(activeSanctions || []).map((s) => (
+                <div key={s.id} className="sanction-item" style={{ padding: '8px', marginBottom: '6px', border: '1px solid #FF8844', borderRadius: '4px', background: 'rgba(255,136,68,0.1)' }}>
+                  <div><strong>{getPlayerName(s.target_id)}</strong> 被制裁</div>
+                  <div style={{ fontSize: '12px', color: '#888' }}>发起人: {getPlayerName(s.initiator_id)} | 剩余 {s.turns_left} 回合</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(sanctionProposals || []).filter((sp) => sp.status === 'pending').length > 0 && (
+            <div className="pending-sanctions">
+              <h5>待附议的制裁提案</h5>
+              {(sanctionProposals || []).filter((sp) => sp.status === 'pending').map((sp) => (
+                <div key={sp.id} className="sanction-proposal-item" style={{ padding: '8px', marginBottom: '6px', border: '1px solid #FFCC44', borderRadius: '4px', background: 'rgba(255,204,68,0.1)' }}>
+                  <div>制裁目标: <strong>{getPlayerName(sp.target_id)}</strong></div>
+                  <div style={{ fontSize: '12px', color: '#888' }}>发起人: {getPlayerName(sp.initiator_id)} | 附议: {(sp.seconder_ids || []).length}/{2}</div>
+                  {sp.initiator_id !== myPlayer?.id && sp.target_id !== myPlayer?.id && !(sp.seconder_ids || []).includes(myPlayer?.id) && (
+                    <button className="btn btn-warning btn-tiny" onClick={() => handleSecondSanction(sp.id)} style={{ marginTop: '4px' }}>
+                      附议
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(activeSanctions || []).length === 0 && (sanctionProposals || []).filter((sp) => sp.status === 'pending').length === 0 && (
+            <div className="empty-state">暂无制裁</div>
           )}
         </div>
       )}

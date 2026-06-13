@@ -159,6 +159,9 @@ func (gi *GameInstance) Initialize(playerIDs []string, playerNames map[string]st
 		JointMilitaryActions: make([]*models.JointMilitaryAction, 0),
 		DiplomacyRelations:   make([]*models.DiplomacyRelation, 0),
 		PlayerCooldowns:      make([]*models.PlayerCooldown, 0),
+		AllianceWars:        make([]*models.AllianceWar, 0),
+		SanctionProposals:   make([]*models.SanctionProposal, 0),
+		ActiveSanctions:     make([]*models.Sanction, 0),
 		Started:              false,
 		GameOver:             false,
 		WinnerID:             "",
@@ -273,6 +276,23 @@ func (gi *GameInstance) ProcessTurn() error {
 
 	diplomacyChanges = ProcessDiplomacyTurn(gi.State)
 	combatRecords := ProcessJointMilitaryActions(gi.State, playerMap, gi.rng)
+	var warEvents []*models.WarEvent
+	var sanctionEvents []*models.SanctionEvent
+	for _, war := range gi.State.AllianceWars {
+		if war.Status != models.WarActive {
+			continue
+		}
+		surrenderAllianceID, shouldSuggest := CheckSurrenderSuggestion(gi.State, war)
+		if shouldSuggest {
+			warEvents = append(warEvents, &models.WarEvent{
+				WarID:               war.ID,
+				EventType:           "surrender_suggestion",
+				Turn:                gi.State.Turn,
+				SurrenderSuggested:  true,
+				SurrenderAllianceID: surrenderAllianceID,
+			})
+		}
+	}
 	_ = combatRecords
 
 	gi.applyInterest()
@@ -297,7 +317,7 @@ func (gi *GameInstance) ProcessTurn() error {
 
 	gi.checkWinConditions()
 
-	gi.generateTurnReports(newTurnEventsStart, diplomacyChanges)
+	gi.generateTurnReports(newTurnEventsStart, diplomacyChanges, warEvents, sanctionEvents)
 	gi.reportReady = true
 
 	return nil
@@ -1277,6 +1297,67 @@ func (gi *GameInstance) TransferLeadership(currentLeaderID string, newLeaderID s
 	return nil
 }
 
+func (gi *GameInstance) DeclareWar(initiatorID string, targetAllianceID string) (*models.AllianceWar, error) {
+	player := gi.getPlayer(initiatorID)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return nil, fmt.Errorf("player is defeated or bankrupt")
+	}
+	war, err := DeclareWar(gi.State, initiatorID, targetAllianceID)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return war, nil
+}
+
+func (gi *GameInstance) SurrenderWar(surrenderLeaderID string, warID string) ([]*models.ReparationDetail, error) {
+	player := gi.getPlayer(surrenderLeaderID)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	reparations, err := SurrenderWar(gi.State, surrenderLeaderID, warID)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return reparations, nil
+}
+
+func (gi *GameInstance) CreateSanctionProposal(initiatorID string, targetID string) (*models.SanctionProposal, error) {
+	player := gi.getPlayer(initiatorID)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return nil, fmt.Errorf("player is defeated or bankrupt")
+	}
+	proposal, err := CreateSanctionProposal(gi.State, initiatorID, targetID)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return proposal, nil
+}
+
+func (gi *GameInstance) SecondSanctionProposal(seconderID string, proposalID string) error {
+	player := gi.getPlayer(seconderID)
+	if player == nil {
+		return fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return fmt.Errorf("player is defeated or bankrupt")
+	}
+	err := SecondSanctionProposal(gi.State, seconderID, proposalID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
 func (gi *GameInstance) PlaceBuyOrder(playerID string, exchangeID string, resource models.ResourceType, quantity float64, price float64) error {
 	player, exists := gi.GetPlayer(playerID)
 	if !exists {
@@ -1587,7 +1668,7 @@ func getResourceName(rt models.ResourceType) string {
 	return string(rt)
 }
 
-func (gi *GameInstance) generateTurnReports(newEventsStart int, diplomacyChanges []*models.DiplomacyChange) {
+func (gi *GameInstance) generateTurnReports(newEventsStart int, diplomacyChanges []*models.DiplomacyChange, warEvents []*models.WarEvent, sanctionEvents []*models.SanctionEvent) {
 	gi.turnReports = make(map[string]*models.TurnReport)
 	newRankings := gi.calculateRankings()
 	newRankMap := make(map[string]int)
@@ -1611,7 +1692,7 @@ func (gi *GameInstance) generateTurnReports(newEventsStart int, diplomacyChanges
 		report.MarketChanges = gi.generateMarketChanges()
 		report.RandomEvents = gi.generateRandomEvents(player, newEventsStart)
 		report.Rankings = gi.generateRankings(player.ID, newRankMap, newScoreMap, snapshot)
-		report.Diplomacy = gi.generateDiplomacySection(player.ID, diplomacyChanges)
+		report.Diplomacy = gi.generateDiplomacySection(player.ID, diplomacyChanges, warEvents, sanctionEvents)
 		gi.turnReports[player.ID] = report
 	}
 }
@@ -1877,15 +1958,31 @@ func (gi *GameInstance) generateRankings(currentPlayerID string, newRankMap map[
 	return entries
 }
 
-func (gi *GameInstance) generateDiplomacySection(playerID string, allChanges []*models.DiplomacyChange) *models.DiplomacySection {
+func (gi *GameInstance) generateDiplomacySection(playerID string, allChanges []*models.DiplomacyChange, warEvents []*models.WarEvent, sanctionEvents []*models.SanctionEvent) *models.DiplomacySection {
 	playerChanges := make([]*models.DiplomacyChange, 0)
 	for _, ch := range allChanges {
 		if ch.PlayerID == playerID || ch.Change != 0 {
 			playerChanges = append(playerChanges, ch)
 		}
 	}
+
+	playerWarEvents := make([]*models.WarEvent, 0)
+	playerAlliance := FindPlayerAlliance(gi.State, playerID)
+	for _, we := range warEvents {
+		if playerAlliance != nil {
+			playerWarEvents = append(playerWarEvents, we)
+		}
+	}
+
+	playerSanctionEvents := make([]*models.SanctionEvent, 0)
+	for _, se := range sanctionEvents {
+		playerSanctionEvents = append(playerSanctionEvents, se)
+	}
+
 	return &models.DiplomacySection{
-		Changes: playerChanges,
+		Changes:        playerChanges,
+		WarEvents:      playerWarEvents,
+		SanctionEvents: playerSanctionEvents,
 	}
 }
 

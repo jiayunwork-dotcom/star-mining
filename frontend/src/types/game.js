@@ -39,6 +39,10 @@ export const PLAYER_ACTIONS = {
   JOIN_MILITARY_ACTION: 'join_military_action',
   DECLINE_MILITARY_ACTION: 'decline_military_action',
   TRANSFER_LEADERSHIP: 'transfer_leadership',
+  DECLARE_WAR: 'declare_war',
+  SURRENDER_WAR: 'surrender_war',
+  CREATE_SANCTION_PROPOSAL: 'create_sanction_proposal',
+  SECOND_SANCTION_PROPOSAL: 'second_sanction_proposal',
 };
 
 export const CELESTIAL_TYPES = {
@@ -153,4 +157,16 @@ export const MILITARY_ACTION_STATUS = {
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
+};
+
+export const WAR_STATUS = {
+  ACTIVE: 'active',
+  SURRENDERED: 'surrendered',
+};
+
+export const SANCTION_PROPOSAL_STATUS = {
+  PENDING: 'pending',
+  ACTIVE: 'active',
+  EXPIRED: 'expired',
+  REJECTED: 'rejected',
 };

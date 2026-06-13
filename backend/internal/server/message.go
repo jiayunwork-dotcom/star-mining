@@ -59,6 +59,10 @@ const (
 	ActionJoinMilitaryAction    = "join_military_action"
 	ActionDeclineMilitaryAction = "decline_military_action"
 	ActionTransferLeadership    = "transfer_leadership"
+	ActionDeclareWar          = "declare_war"
+	ActionSurrenderWar        = "surrender_war"
+	ActionCreateSanctionProposal  = "create_sanction_proposal"
+	ActionSecondSanctionProposal  = "second_sanction_proposal"
 )
 
 type Message struct {
