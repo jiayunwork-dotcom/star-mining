@@ -170,23 +170,23 @@ func (gi *GameInstance) ProcessTurn() error {
 		player.DailyExpense = 0
 
 		miningBonus := GetMiningBonus(player.TechTree)
-		ProcessAllMining(player, gi.State.GameMap, miningBonus)
+		_ = ProcessAllMining(player, gi.State.GameMap, miningBonus)
 
 		refiningBonus := GetRefiningBonus(player.TechTree)
-		ProcessAllRefining(player, refiningBonus)
+		_ = ProcessAllRefining(player, refiningBonus)
 
-		ProcessAllShipyards(player)
+		_ = ProcessAllShipyards(player)
 
-		ProcessResearch(player.TechTree)
+		_, _ = ProcessResearch(player.TechTree)
 
-		ProcessAllFleetMoves(player)
+		_ = ProcessAllFleetMoves(player)
 
 		maintenance := PayMaintenance(player)
 		player.DailyExpense = maintenance
 	}
 
 	for _, exchange := range gi.State.Exchanges {
-		MatchOrders(exchange, playerMap)
+		_ = MatchOrders(exchange, playerMap)
 	}
 
 	for _, player := range gi.State.Players {
@@ -200,7 +200,7 @@ func (gi *GameInstance) ProcessTurn() error {
 
 	gi.State.Blockades = UpdateBlockades(gi.State.Blockades)
 
-	DistributeDividends(gi.State.Players, gi.State.Turn)
+	_ = DistributeDividends(gi.State.Players, gi.State.Turn)
 
 	UpdateStockPrices(gi.State.Players, gi.State.Exchanges)
 
@@ -711,7 +711,7 @@ func (gi *GameInstance) HirePirates(playerID string, targetPlayerID string) erro
 	if len(targetPlayer.Fleets) > 0 {
 		fleet := targetPlayer.Fleets[0]
 		combatBonus := GetCombatBonus(targetPlayer.TechTree)
-		PirateAttack(fleet, 2, combatBonus, gi.rng)
+		_, _ = PirateAttack(fleet, 2, combatBonus, gi.rng)
 	}
 
 	gi.State.UpdatedAt = time.Now()

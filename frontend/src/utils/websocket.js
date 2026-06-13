@@ -1,6 +1,7 @@
 import { MESSAGE_TYPES } from '../types/game';
 
-const WS_URL = 'ws://localhost:8080/ws';
+const API_BASE_URL = 'http://localhost:8080/api';
+const WS_BASE_URL = 'ws://localhost:8080/ws';
 const RECONNECT_INTERVAL = 3000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
@@ -14,19 +15,147 @@ class WebSocketManager {
     this.isManualClose = false;
     this.heartbeatInterval = null;
     this.roomId = null;
+    this.roomName = null;
     this.playerId = null;
+    this.nickname = null;
   }
 
-  connect(nickname) {
+  async login(nickname) {
+    const response = await fetch(`${API_BASE_URL}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ player_name: nickname }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '登录失败' }));
+      throw new Error(error.error || '登录失败');
+    }
+    const data = await response.json();
+    this.playerId = data.player_id;
+    this.nickname = data.player_name;
+    return data;
+  }
+
+  async listRooms() {
+    const response = await fetch(`${API_BASE_URL}/rooms`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '获取房间列表失败' }));
+      throw new Error(error.error || '获取房间列表失败');
+    }
+    return response.json();
+  }
+
+  async getRoom(roomId) {
+    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '获取房间信息失败' }));
+      throw new Error(error.error || '获取房间信息失败');
+    }
+    return response.json();
+  }
+
+  async createRoom(roomName) {
+    const response = await fetch(`${API_BASE_URL}/rooms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        room_name: roomName,
+        player_name: this.nickname,
+        player_id: this.playerId,
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '创建房间失败' }));
+      throw new Error(error.error || '创建房间失败');
+    }
+    const data = await response.json();
+    this.roomId = data.room_id;
+    this.roomName = roomName;
+
+    const roomDetail = await this.getRoom(data.room_id);
+    return {
+      ...data,
+      room_name: roomName,
+      players: roomDetail.players || [],
+      status: roomDetail.status,
+    };
+  }
+
+  async joinRoom(roomId) {
+    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/join`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        player_name: this.nickname,
+        player_id: this.playerId,
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '加入房间失败' }));
+      throw new Error(error.error || '加入房间失败');
+    }
+    const data = await response.json();
+    this.roomId = data.room_id;
+
+    const roomDetail = await this.getRoom(data.room_id);
+    this.roomName = roomDetail.name || '游戏房间';
+    return {
+      ...data,
+      room_name: this.roomName,
+      players: roomDetail.players || [],
+      status: roomDetail.status,
+    };
+  }
+
+  async startGame(roomId) {
+    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '开始游戏失败' }));
+      throw new Error(error.error || '开始游戏失败');
+    }
+    return response.json();
+  }
+
+  connect() {
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(WS_URL);
-        this.nickname = nickname;
+        if (!this.roomId || !this.playerId) {
+          reject(new Error('需要先加入房间才能连接WebSocket'));
+          return;
+        }
+
+        const wsUrl = `${WS_BASE_URL}/${this.roomId}/${this.playerId}`;
+        console.log('[WebSocket] 连接到:', wsUrl);
+        this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
           console.log('[WebSocket] 连接成功');
           this.reconnectAttempts = 0;
+          this.isManualClose = false;
           this.startHeartbeat();
+          this.emit('open', { success: true });
+          this.send(MESSAGE_TYPES.GAME_STATE, {});
           resolve({ success: true });
         };
 
@@ -46,13 +175,13 @@ class WebSocketManager {
         this.ws.onclose = (event) => {
           console.log('[WebSocket] 连接关闭:', event.code, event.reason);
           this.stopHeartbeat();
-          
+
           if (!this.isManualClose && this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             this.reconnectAttempts++;
             console.log(`[WebSocket] 尝试重连 (${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-            setTimeout(() => this.connect(this.nickname), RECONNECT_INTERVAL);
+            setTimeout(() => this.connect(), RECONNECT_INTERVAL);
           }
-          
+
           this.emit('close', event);
         };
       } catch (e) {

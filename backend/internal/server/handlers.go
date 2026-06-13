@@ -239,6 +239,11 @@ func (h *APIHandler) PlayerReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.SetReady(playerID, true); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -260,6 +265,11 @@ func (h *APIHandler) PlayerUnready(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -328,6 +338,11 @@ func (h *APIHandler) PlayerAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	action := &PlayerActionData{
 		Action: req.Action,
 		Params: req.Params,
@@ -387,6 +402,11 @@ func (h *APIHandler) BuildStation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.BuildStation(playerID, req.BodyID, req.ResourceType); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -414,6 +434,11 @@ func (h *APIHandler) BuildRefinery(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -447,6 +472,11 @@ func (h *APIHandler) PlaceBuyOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.PlaceBuyOrder(playerID, req.ExchangeID, req.Resource, req.Quantity, req.Price); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -477,6 +507,11 @@ func (h *APIHandler) PlaceSellOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.PlaceSellOrder(playerID, req.ExchangeID, req.Resource, req.Quantity, req.Price); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -504,6 +539,11 @@ func (h *APIHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -561,6 +601,11 @@ func (h *APIHandler) GetPlayerState(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -674,6 +719,11 @@ func (h *APIHandler) BuildShipyard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.BuildShipyard(playerID, req.BodyID); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -703,6 +753,11 @@ func (h *APIHandler) BuildShip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.BuildShip(playerID, req.ShipyardID, req.ShipType); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -729,6 +784,11 @@ func (h *APIHandler) CreateFleet(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -762,6 +822,11 @@ func (h *APIHandler) MoveFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.MoveFleet(playerID, req.FleetID, req.TargetBodyID); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -788,6 +853,11 @@ func (h *APIHandler) ResearchTech(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -820,6 +890,11 @@ func (h *APIHandler) PlaceBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.PlaceBid(playerID, req.BodyID, req.Amount); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -846,6 +921,11 @@ func (h *APIHandler) BlockLane(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -878,6 +958,11 @@ func (h *APIHandler) HirePirates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.HirePirates(playerID, req.TargetPlayerID); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -904,6 +989,11 @@ func (h *APIHandler) BuyStock(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -936,6 +1026,11 @@ func (h *APIHandler) SellStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.SellStock(playerID, req.TargetPlayerID, req.Shares); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -962,6 +1057,11 @@ func (h *APIHandler) ProposeTakeover(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -994,6 +1094,11 @@ func (h *APIHandler) LoadCargo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.LoadCargo(playerID, req.FleetID, req.Resource, req.Amount); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1020,6 +1125,11 @@ func (h *APIHandler) UnloadCargo(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -1052,6 +1162,11 @@ func (h *APIHandler) UpgradeStation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := room.UpgradeStation(playerID, req.StationID); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1078,6 +1193,11 @@ func (h *APIHandler) UpgradeRefinery(w http.ResponseWriter, r *http.Request) {
 	room, exists := h.roomManager.GetRoom(roomID)
 	if !exists {
 		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

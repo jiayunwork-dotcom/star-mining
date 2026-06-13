@@ -10,6 +10,7 @@ const initialState = {
   playerId: null,
   nickname: '',
   roomId: null,
+  roomName: '',
   rooms: [],
   players: [],
   turn: 0,
@@ -66,6 +67,7 @@ function gameReducer(state, action) {
       return {
         ...state,
         roomId: action.payload.roomId,
+        roomName: action.payload.roomName || state.roomName,
         players: action.payload.players || state.players,
       };
 
@@ -123,6 +125,7 @@ function gameReducer(state, action) {
       return {
         ...state,
         roomId: null,
+        roomName: '',
         players: [],
         gameState: GAME_STATES.LOBBY,
         currentPage: 'lobby',
@@ -138,26 +141,58 @@ function parseGameState(data) {
 
   const result = {};
 
+  if (data.status !== undefined) {
+    if (data.status === 'playing') {
+      result.started = true;
+      result.gameState = GAME_STATES.PLAYING;
+    } else if (data.status === 'finished') {
+      result.gameState = GAME_STATES.ENDED;
+    }
+  }
+
+  const gameData = data.game_data || data;
+
   if (data.turn !== undefined) result.turn = data.turn;
-  if (data.phase !== undefined) result.phase = data.phase;
-  if (data.started !== undefined) result.started = data.started;
-  if (data.game_over !== undefined) result.gameOver = data.game_over;
-  if (data.winner_id !== undefined) result.winnerId = data.winner_id;
-  if (data.max_turns !== undefined) result.maxTurns = data.max_turns;
-  if (data.game_map !== undefined) result.gameMap = data.game_map;
-  if (data.exchanges !== undefined) result.exchanges = data.exchanges;
-  if (data.random_events !== undefined) result.randomEvents = data.random_events;
-  if (data.blockades !== undefined) result.blockades = data.blockades;
-  if (data.bids !== undefined) result.bids = data.bids;
+  if (gameData.phase !== undefined) result.phase = gameData.phase;
+  if (gameData.started !== undefined) result.started = gameData.started;
+  if (gameData.game_over !== undefined) result.gameOver = gameData.game_over;
+  if (gameData.winner_id !== undefined) result.winnerId = gameData.winner_id;
+  if (gameData.max_turns !== undefined) result.maxTurns = gameData.max_turns;
+  if (gameData.game_map !== undefined) result.gameMap = gameData.game_map;
+  if (gameData.exchanges !== undefined) result.exchanges = gameData.exchanges;
+  if (gameData.random_events !== undefined) result.randomEvents = gameData.random_events;
+  if (gameData.blockades !== undefined) result.blockades = gameData.blockades;
+  if (gameData.bids !== undefined) result.bids = gameData.bids;
 
   if (data.players && Array.isArray(data.players)) {
+    result.players = data.players;
     const myId = ws.playerId;
     const me = data.players.find((p) => p.id === myId);
     const others = data.players.filter((p) => p.id !== myId);
-    
-    if (me) result.myPlayer = me;
+
+    if (me) {
+      result.myPlayer = {
+        ...result.myPlayer,
+        ...me,
+        name: me.name || result.myPlayer.name,
+      };
+    }
     result.otherPlayers = others;
-    result.players = data.players;
+  }
+
+  if (gameData.players && Array.isArray(gameData.players) && !data.players) {
+    const myId = ws.playerId;
+    const me = gameData.players.find((p) => p.id === myId);
+    const others = gameData.players.filter((p) => p.id !== myId);
+
+    if (me) {
+      result.myPlayer = {
+        ...result.myPlayer,
+        ...me,
+      };
+    }
+    result.otherPlayers = others;
+    result.players = gameData.players;
   }
 
   return result;
@@ -183,23 +218,49 @@ export function GameProvider({ children }) {
 
     const unlistenGameState = ws.on(MESSAGE_TYPES.GAME_STATE, (data) => {
       dispatch({ type: 'UPDATE_GAME_STATE', payload: data });
+
+      if (data && data.status === 'playing' && state.currentPage !== 'game') {
+        dispatch({ type: 'GAME_STARTED', payload: data });
+      }
     });
 
     const unlistenEvent = ws.on(MESSAGE_TYPES.EVENT, (data) => {
-      dispatch({ type: 'ADD_EVENT', payload: data });
+      if (data && data.event === 'game_started') {
+        dispatch({ type: 'ADD_EVENT', payload: { event: 'game_started', message: '游戏开始！' } });
+      } else if (data && data.event === 'turn_ended') {
+        dispatch({ type: 'ADD_EVENT', payload: { event: 'turn_ended', message: `回合 ${data.params?.turn} 结束` } });
+      } else {
+        dispatch({ type: 'ADD_EVENT', payload: data });
+      }
     });
 
     const unlistenSystem = ws.on(MESSAGE_TYPES.SYSTEM, (data) => {
-      if (data && data.type === 'player_joined') {
+      if (!data) return;
+
+      if (data.type === 'player_joined' && data.player) {
         dispatch({ type: 'ADD_PLAYER', payload: data.player });
-      } else if (data && data.type === 'player_left') {
+      } else if (data.type === 'player_left' && data.player) {
         dispatch({ type: 'REMOVE_PLAYER', payload: data.player });
-      } else if (data && data.type === 'game_started') {
+      } else if (data.type === 'game_started') {
         dispatch({ type: 'GAME_STARTED', payload: data.game_state });
-      } else if (data && data.type === 'room_created') {
-        dispatch({ type: 'SET_ROOM', payload: { roomId: data.room_id, players: data.players } });
-      } else if (data && data.type === 'room_joined') {
-        dispatch({ type: 'SET_ROOM', payload: { roomId: data.room_id, players: data.players } });
+      } else if (data.type === 'room_created') {
+        dispatch({
+          type: 'SET_ROOM',
+          payload: {
+            roomId: data.room_id,
+            roomName: data.name,
+            players: data.players || [],
+          },
+        });
+      } else if (data.type === 'room_joined') {
+        dispatch({
+          type: 'SET_ROOM',
+          payload: {
+            roomId: data.room_id,
+            roomName: data.name,
+            players: data.players || [],
+          },
+        });
       }
     });
 
@@ -222,20 +283,18 @@ export function GameProvider({ children }) {
       unlistenSystem();
       unlistenError();
     };
-  }, []);
+  }, [state.currentPage]);
 
   const connect = useCallback(async (nickname) => {
     try {
-      const result = await ws.connect(nickname);
-      if (result && result.success) {
-        dispatch({
-          type: 'SET_PLAYER',
-          payload: { playerId: ws.playerId, nickname },
-        });
-      }
+      const loginResult = await ws.login(nickname);
+      dispatch({
+        type: 'SET_PLAYER',
+        payload: { playerId: loginResult.player_id, nickname: loginResult.player_name },
+      });
       return true;
     } catch (e) {
-      console.error('连接失败:', e);
+      console.error('登录失败:', e);
       return false;
     }
   }, []);
@@ -245,55 +304,101 @@ export function GameProvider({ children }) {
     dispatch({ type: 'SET_CONNECTED', payload: false });
   }, []);
 
-  const createRoom = useCallback((roomName) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.CREATE_ROOM, { name: roomName });
+  const createRoom = useCallback(async (roomName) => {
+    try {
+      const result = await ws.createRoom(roomName);
+      dispatch({
+        type: 'SET_ROOM',
+        payload: {
+          roomId: result.room_id,
+          roomName: result.room_name || roomName,
+          players: result.players || [],
+        },
+      });
+      await ws.connect();
+      return true;
+    } catch (e) {
+      console.error('创建房间失败:', e);
+      return false;
+    }
   }, []);
 
-  const joinRoom = useCallback((roomId) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.JOIN_ROOM, { room_id: roomId });
+  const joinRoom = useCallback(async (roomId) => {
+    try {
+      const result = await ws.joinRoom(roomId);
+      dispatch({
+        type: 'SET_ROOM',
+        payload: {
+          roomId: result.room_id,
+          roomName: result.room_name || '游戏房间',
+          players: result.players || [],
+        },
+      });
+      await ws.connect();
+      return true;
+    } catch (e) {
+      console.error('加入房间失败:', e);
+      return false;
+    }
   }, []);
 
   const leaveRoom = useCallback(() => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.LEAVE_ROOM, {});
+    ws.disconnect();
     dispatch({ type: 'LEAVE_ROOM' });
   }, []);
 
-  const listRooms = useCallback(() => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.LIST_ROOMS, {});
+  const listRooms = useCallback(async () => {
+    try {
+      const result = await ws.listRooms();
+      dispatch({ type: 'SET_ROOMS', payload: result.rooms || [] });
+      return true;
+    } catch (e) {
+      console.error('获取房间列表失败:', e);
+      return false;
+    }
   }, []);
 
-  const startGame = useCallback(() => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.START_GAME, {});
-  }, []);
+  const startGame = useCallback(async () => {
+    try {
+      if (!state.roomId) {
+        console.error('没有房间ID，无法开始游戏');
+        return false;
+      }
+      await ws.startGame(state.roomId);
+      return true;
+    } catch (e) {
+      console.error('开始游戏失败:', e);
+      return false;
+    }
+  }, [state.roomId]);
 
   const endTurn = useCallback(() => {
     ws.sendPlayerAction(PLAYER_ACTIONS.END_TURN, {});
   }, []);
 
   const buildShip = useCallback((shipType, celestialId) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.BUILD, {
-      type: 'ship',
+    ws.sendPlayerAction('build_ship', {
       ship_type: shipType,
-      celestial_id: celestialId,
+      shipyard_id: celestialId,
     });
   }, []);
 
   const moveFleet = useCallback((shipIds, targetCelestialId) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.MOVE, {
-      ship_ids: shipIds,
-      target_celestial_id: targetCelestialId,
+    ws.sendPlayerAction('move_fleet', {
+      fleet_id: shipIds,
+      target_body_id: targetCelestialId,
     });
   }, []);
 
   const researchTech = useCallback((techType) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.RESEARCH, {
+    ws.sendPlayerAction('research_tech', {
       tech_type: techType,
     });
   }, []);
 
   const placeOrder = useCallback((orderType, resource, price, quantity) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.TRADE, {
-      order_type: orderType,
+    const action = orderType === 'buy' ? 'place_buy_order' : 'place_sell_order';
+    ws.sendPlayerAction(action, {
       resource,
       price,
       quantity,
@@ -301,40 +406,35 @@ export function GameProvider({ children }) {
   }, []);
 
   const cancelOrder = useCallback((orderId) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.TRADE, {
-      action: 'cancel',
+    ws.sendPlayerAction('cancel_order', {
       order_id: orderId,
     });
   }, []);
 
   const bidAuction = useCallback((auctionId, amount) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.TRADE, {
-      action: 'bid',
-      auction_id: auctionId,
+    ws.sendPlayerAction('place_bid', {
+      body_id: auctionId,
       amount,
     });
   }, []);
 
   const tradeStock = useCallback((companyId, amount) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.TRADE, {
-      action: 'stock',
-      company_id: companyId,
-      amount,
+    const action = amount > 0 ? 'buy_stock' : 'sell_stock';
+    ws.sendPlayerAction(action, {
+      target_player_id: companyId,
+      shares: Math.abs(amount),
     });
   }, []);
 
   const acquireCompany = useCallback((companyId, price) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.TRADE, {
-      action: 'acquire',
-      company_id: companyId,
-      price,
+    ws.sendPlayerAction('propose_takeover', {
+      target_player_id: companyId,
     });
   }, []);
 
   const imposeEmbargo = useCallback((companyId) => {
-    ws.sendPlayerAction(PLAYER_ACTIONS.TRADE, {
-      action: 'embargo',
-      target_id: companyId,
+    ws.sendPlayerAction('block_lane', {
+      lane_id: companyId,
     });
   }, []);
 
