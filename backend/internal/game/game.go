@@ -32,6 +32,12 @@ type PlayerTurnSnapshot struct {
 	Score       float64
 }
 
+type TurnActivity struct {
+	MiningOutput     map[models.ResourceType]float64
+	RefiningConsumed map[models.ResourceType]float64
+	RefiningProduced map[models.ResourceType]float64
+}
+
 type GameInstance struct {
 	ID               string
 	State            *models.GameState
@@ -45,6 +51,7 @@ type GameInstance struct {
 	preTurnSnapshots map[string]*PlayerTurnSnapshot
 	preTurnPrices    map[string]map[models.ResourceType]float64
 	turnReports      map[string]*models.TurnReport
+	turnActivities   map[string]*TurnActivity
 	reportReady      bool
 }
 
@@ -60,6 +67,7 @@ func NewGameInstance(roomID string, seed int64) *GameInstance {
 		preTurnSnapshots: make(map[string]*PlayerTurnSnapshot),
 		preTurnPrices:    make(map[string]map[models.ResourceType]float64),
 		turnReports:      make(map[string]*models.TurnReport),
+		turnActivities:   make(map[string]*TurnActivity),
 		reportReady:      false,
 	}
 }
@@ -182,6 +190,7 @@ func (gi *GameInstance) ProcessTurn() error {
 
 	gi.reportReady = false
 	gi.saveTurnSnapshots()
+	gi.turnActivities = make(map[string]*TurnActivity)
 
 	newEvents := gi.State.RandomEvents
 	playerMap := make(map[string]*models.Player)
@@ -196,14 +205,30 @@ func (gi *GameInstance) ProcessTurn() error {
 			continue
 		}
 
+		activity := &TurnActivity{
+			MiningOutput:     make(map[models.ResourceType]float64),
+			RefiningConsumed: make(map[models.ResourceType]float64),
+			RefiningProduced: make(map[models.ResourceType]float64),
+		}
+		gi.turnActivities[player.ID] = activity
+
 		player.DailyIncome = 0
 		player.DailyExpense = 0
 
 		miningBonus := GetMiningBonus(player.TechTree)
-		_ = ProcessAllMining(player, gi.State.GameMap, miningBonus)
+		miningResults := ProcessAllMining(player, gi.State.GameMap, miningBonus)
+		for _, station := range player.Stations {
+			if output, ok := miningResults[station.ID]; ok {
+				activity.MiningOutput[station.ResourceType] += output
+			}
+		}
 
 		refiningBonus := GetRefiningBonus(player.TechTree)
-		_ = ProcessAllRefining(player, refiningBonus)
+		refiningResults := ProcessAllRefiningDetailed(player, refiningBonus)
+		for _, detail := range refiningResults {
+			activity.RefiningConsumed[detail.InputResource] += detail.InputConsumed
+			activity.RefiningProduced[detail.OutputResource] += detail.OutputProduced
+		}
 
 		_ = ProcessAllShipyards(player)
 
@@ -1388,6 +1413,8 @@ func (gi *GameInstance) generateResourceChanges(player *models.Player, snapshot 
 	changes := make([]*models.ResourceChange, 0, len(resourceTypes))
 	prevResources := snapshot.Resources
 
+	activity := gi.turnActivities[player.ID]
+
 	for _, rt := range resourceTypes {
 		prev := prevResources[rt]
 		curr := player.Resources[rt]
@@ -1397,26 +1424,12 @@ func (gi *GameInstance) generateResourceChanges(player *models.Player, snapshot 
 		consumed := 0.0
 		traded := 0.0
 
-		for _, station := range player.Stations {
-			if station.ResourceType == rt {
-				produced += station.OutputPerTurn
-			}
+		if activity != nil {
+			produced = activity.MiningOutput[rt] + activity.RefiningProduced[rt]
+			consumed = activity.RefiningConsumed[rt]
 		}
-		for _, ref := range player.Refineries {
-			if ref.InputResource == rt {
-				consumed += ref.InputInventory
-			}
-		}
-		for _, ref := range player.Refineries {
-			if ref.OutputResource == rt {
-				produced += ref.OutputInventory
-			}
-		}
-		if net > produced - consumed {
-			traded = net - (produced - consumed)
-		} else if net < produced - consumed {
-			traded = net - (produced - consumed)
-		}
+
+		traded = net - (produced - consumed)
 
 		changes = append(changes, &models.ResourceChange{
 			ResourceType: rt,

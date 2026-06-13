@@ -155,6 +155,56 @@ func ProcessAllRefining(player *models.Player, techBonus float64) map[string]flo
 	return results
 }
 
+type RefiningDetail struct {
+	InputConsumed  float64
+	OutputProduced float64
+	InputResource  models.ResourceType
+	OutputResource models.ResourceType
+}
+
+func ProcessAllRefiningDetailed(player *models.Player, techBonus float64) map[string]*RefiningDetail {
+	results := make(map[string]*RefiningDetail)
+
+	for _, refinery := range player.Refineries {
+		consumed, produced := ProcessRefiningDetailed(refinery, player, techBonus)
+		if consumed > 0 || produced > 0 {
+			results[refinery.ID] = &RefiningDetail{
+				InputConsumed:  consumed,
+				OutputProduced: produced,
+				InputResource:  refinery.InputResource,
+				OutputResource: refinery.OutputResource,
+			}
+		}
+	}
+
+	return results
+}
+
+func ProcessRefiningDetailed(refinery *models.Refinery, player *models.Player, techBonus float64) (float64, float64) {
+	if refinery.InputInventory <= 0 {
+		return 0, 0
+	}
+
+	levelBonus := 1.0 + float64(refinery.Level-1)*0.25
+	processingAmount := refinery.ProcessingSpeed * levelBonus * techBonus
+
+	if processingAmount > refinery.InputInventory {
+		processingAmount = refinery.InputInventory
+	}
+
+	outputAmount := processingAmount * refinery.ConversionRate
+
+	refinery.InputInventory -= processingAmount
+	refinery.OutputInventory += outputAmount
+
+	if player.Resources == nil {
+		player.Resources = make(models.Resources)
+	}
+	player.Resources[refinery.OutputResource] += outputAmount
+
+	return processingAmount, outputAmount
+}
+
 func TransferToRefinery(player *models.Player, refinery *models.Refinery, amount float64) error {
 	if player.Resources == nil {
 		return fmt.Errorf("player has no resources")

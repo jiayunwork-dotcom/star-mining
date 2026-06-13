@@ -279,10 +279,6 @@ class WebSocketManager {
       this.roomId = room_id;
     }
 
-    if (player_id) {
-      this.playerId = player_id;
-    }
-
     if (this.pendingRequests.size > 0) {
       for (const [id, pending] of this.pendingRequests) {
         if (pending.ackType === type) {

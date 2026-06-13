@@ -67,6 +67,11 @@ func CancelOrder(exchange *models.Exchange, orderID string) error {
 	return fmt.Errorf("order not found")
 }
 
+type ResourceVolume struct {
+	BuyVolume  float64
+	SellVolume float64
+}
+
 func MatchOrders(exchange *models.Exchange, players map[string]*models.Player) []*models.Order {
 	var filledOrders []*models.Order
 
@@ -79,12 +84,27 @@ func MatchOrders(exchange *models.Exchange, players map[string]*models.Player) [
 		models.Fuel,
 	}
 
+	preMatchVolumes := make(map[models.ResourceType]*ResourceVolume)
+	for _, resource := range resourceTypes {
+		buyOrders := getOrdersByResource(exchange.BuyOrders, resource)
+		sellOrders := getOrdersByResource(exchange.SellOrders, resource)
+		totalBuy := 0.0
+		totalSell := 0.0
+		for _, o := range buyOrders {
+			totalBuy += o.Quantity - o.FilledQty
+		}
+		for _, o := range sellOrders {
+			totalSell += o.Quantity - o.FilledQty
+		}
+		preMatchVolumes[resource] = &ResourceVolume{BuyVolume: totalBuy, SellVolume: totalSell}
+	}
+
 	for _, resource := range resourceTypes {
 		filled := matchResourceOrders(exchange, resource, players)
 		filledOrders = append(filledOrders, filled...)
 	}
 
-	UpdatePrices(exchange)
+	UpdatePricesWithVolumes(exchange, preMatchVolumes)
 
 	return filledOrders
 }
@@ -212,6 +232,52 @@ func UpdatePrices(exchange *models.Exchange) {
 			changeRatio = (buyVolume - sellVolume) / sellVolume
 		} else if buyVolume > 0 {
 			changeRatio = 0.1
+		} else {
+			changeRatio = 0
+		}
+
+		if changeRatio > MaxPriceChange {
+			changeRatio = MaxPriceChange
+		}
+		if changeRatio < -MaxPriceChange {
+			changeRatio = -MaxPriceChange
+		}
+
+		newPrice := currentPrice * (1 + changeRatio)
+
+		if newPrice < 1.0 {
+			newPrice = 1.0
+		}
+
+		exchange.Prices[resource] = newPrice
+	}
+}
+
+func UpdatePricesWithVolumes(exchange *models.Exchange, volumes map[models.ResourceType]*ResourceVolume) {
+	resourceTypes := []models.ResourceType{
+		models.IronOre,
+		models.Titanium,
+		models.Helium3,
+		models.RareEarth,
+		models.IceCrystal,
+		models.Fuel,
+	}
+
+	for _, resource := range resourceTypes {
+		currentPrice := exchange.Prices[resource]
+
+		vol := volumes[resource]
+		if vol == nil {
+			continue
+		}
+
+		buyVolume := vol.BuyVolume
+		sellVolume := vol.SellVolume
+		totalVolume := buyVolume + sellVolume
+
+		var changeRatio float64
+		if totalVolume > 0 {
+			changeRatio = (buyVolume - sellVolume) / totalVolume * 0.2
 		} else {
 			changeRatio = 0
 		}
