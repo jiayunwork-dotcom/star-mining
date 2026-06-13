@@ -270,6 +270,32 @@ func (c *WebSocketConn) handlePlayerAction(msg *Message, room *Room) {
 		execErr = c.handleUpgradeStation(action.Params, room)
 	case ActionUpgradeRefinery:
 		execErr = c.handleUpgradeRefinery(action.Params, room)
+	case ActionCreateAlliance:
+		execErr = c.handleCreateAlliance(action.Params, room)
+	case ActionSendAllianceInvite:
+		execErr = c.handleSendAllianceInvite(action.Params, room)
+	case ActionAcceptAllianceInvite:
+		execErr = c.handleAcceptAllianceInvite(action.Params, room)
+	case ActionRejectAllianceInvite:
+		execErr = c.handleRejectAllianceInvite(action.Params, room)
+	case ActionLeaveAlliance:
+		execErr = c.handleLeaveAlliance(room)
+	case ActionKickAllianceMember:
+		execErr = c.handleKickAllianceMember(action.Params, room)
+	case ActionDisbandAlliance:
+		execErr = c.handleDisbandAlliance(room)
+	case ActionCreateTradeAgreement:
+		execErr = c.handleCreateTradeAgreement(action.Params, room)
+	case ActionRenewTradeAgreement:
+		execErr = c.handleRenewTradeAgreement(action.Params, room)
+	case ActionInitiateJointMilitary:
+		execErr = c.handleInitiateJointMilitary(action.Params, room)
+	case ActionJoinMilitaryAction:
+		execErr = c.handleJoinMilitaryAction(action.Params, room)
+	case ActionDeclineMilitaryAction:
+		execErr = c.handleDeclineMilitaryAction(action.Params, room)
+	case ActionTransferLeadership:
+		execErr = c.handleTransferLeadership(action.Params, room)
 	case ActionGetGameState:
 		c.handleGameStateRequest(room)
 		return
@@ -661,6 +687,147 @@ func (c *WebSocketConn) handleUpgradeRefinery(params map[string]interface{}, roo
 	}
 
 	return room.UpgradeRefinery(c.playerID, refineryID)
+}
+
+func (c *WebSocketConn) handleCreateAlliance(params map[string]interface{}, room *Room) error {
+	name, err := getStringParam(params, "name")
+	if err != nil {
+		return err
+	}
+	color, err := getStringParam(params, "color")
+	if err != nil {
+		return err
+	}
+	_, err2 := room.CreateAlliance(c.playerID, name, models.AllianceColor(color))
+	return err2
+}
+
+func (c *WebSocketConn) handleSendAllianceInvite(params map[string]interface{}, room *Room) error {
+	allianceID, err := getStringParam(params, "alliance_id")
+	if err != nil {
+		return err
+	}
+	targetPlayerID, err := getStringParam(params, "target_player_id")
+	if err != nil {
+		return err
+	}
+
+	err = room.SendAllianceInvite(c.playerID, allianceID, targetPlayerID)
+	if err != nil {
+		return err
+	}
+
+	game := room.GetGame()
+	if game != nil {
+		alliance := game.FindPlayerAlliancePublic(c.playerID)
+		if alliance != nil {
+			inviteData := &AllianceInviteData{
+				AllianceID:   allianceID,
+				AllianceName: alliance.Name,
+				InviterID:    c.playerID,
+				TargetID:     targetPlayerID,
+				ExpiryTurn:   game.GetGameState().Turn,
+			}
+			player, exists := room.GetPlayer(c.playerID)
+			if exists {
+				inviteData.InviterName = player.Name
+			}
+			inviteMsg, _ := NewMessage(MsgTypeAllianceInvite, inviteData)
+			_ = room.SendToPlayer(targetPlayerID, inviteMsg)
+		}
+	}
+
+	return nil
+}
+
+func (c *WebSocketConn) handleAcceptAllianceInvite(params map[string]interface{}, room *Room) error {
+	allianceID, err := getStringParam(params, "alliance_id")
+	if err != nil {
+		return err
+	}
+	return room.AcceptAllianceInvite(c.playerID, allianceID)
+}
+
+func (c *WebSocketConn) handleRejectAllianceInvite(params map[string]interface{}, room *Room) error {
+	allianceID, err := getStringParam(params, "alliance_id")
+	if err != nil {
+		return err
+	}
+	return room.RejectAllianceInvite(c.playerID, allianceID)
+}
+
+func (c *WebSocketConn) handleLeaveAlliance(room *Room) error {
+	return room.LeaveAlliance(c.playerID)
+}
+
+func (c *WebSocketConn) handleKickAllianceMember(params map[string]interface{}, room *Room) error {
+	targetID, err := getStringParam(params, "target_player_id")
+	if err != nil {
+		return err
+	}
+	return room.KickAllianceMember(c.playerID, targetID)
+}
+
+func (c *WebSocketConn) handleDisbandAlliance(room *Room) error {
+	return room.DisbandAlliance(c.playerID)
+}
+
+func (c *WebSocketConn) handleCreateTradeAgreement(params map[string]interface{}, room *Room) error {
+	targetPlayerID, err := getStringParam(params, "target_player_id")
+	if err != nil {
+		return err
+	}
+	_, err2 := room.CreateTradeAgreement(c.playerID, targetPlayerID)
+	return err2
+}
+
+func (c *WebSocketConn) handleRenewTradeAgreement(params map[string]interface{}, room *Room) error {
+	agreementID, err := getStringParam(params, "agreement_id")
+	if err != nil {
+		return err
+	}
+	return room.RenewTradeAgreement(c.playerID, agreementID)
+}
+
+func (c *WebSocketConn) handleInitiateJointMilitary(params map[string]interface{}, room *Room) error {
+	targetPlayerID, err := getStringParam(params, "target_player_id")
+	if err != nil {
+		return err
+	}
+	targetBodyID, err := getStringParam(params, "target_body_id")
+	if err != nil {
+		return err
+	}
+	_, err2 := room.InitiateJointMilitaryAction(c.playerID, targetPlayerID, targetBodyID)
+	return err2
+}
+
+func (c *WebSocketConn) handleJoinMilitaryAction(params map[string]interface{}, room *Room) error {
+	actionID, err := getStringParam(params, "action_id")
+	if err != nil {
+		return err
+	}
+	fleetID, err := getStringParam(params, "fleet_id")
+	if err != nil {
+		return err
+	}
+	return room.JoinMilitaryAction(c.playerID, actionID, fleetID)
+}
+
+func (c *WebSocketConn) handleDeclineMilitaryAction(params map[string]interface{}, room *Room) error {
+	actionID, err := getStringParam(params, "action_id")
+	if err != nil {
+		return err
+	}
+	return room.DeclineMilitaryAction(c.playerID, actionID)
+}
+
+func (c *WebSocketConn) handleTransferLeadership(params map[string]interface{}, room *Room) error {
+	newLeaderID, err := getStringParam(params, "new_leader_id")
+	if err != nil {
+		return err
+	}
+	return room.TransferLeadership(c.playerID, newLeaderID)
 }
 
 func (c *WebSocketConn) handleChat(msg *Message, room *Room) {

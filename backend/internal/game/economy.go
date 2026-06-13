@@ -100,7 +100,7 @@ func MatchOrders(exchange *models.Exchange, players map[string]*models.Player) [
 	}
 
 	for _, resource := range resourceTypes {
-		filled := matchResourceOrders(exchange, resource, players)
+		filled := matchResourceOrders(exchange, resource, players, nil)
 		filledOrders = append(filledOrders, filled...)
 	}
 
@@ -109,7 +109,44 @@ func MatchOrders(exchange *models.Exchange, players map[string]*models.Player) [
 	return filledOrders
 }
 
-func matchResourceOrders(exchange *models.Exchange, resource models.ResourceType, players map[string]*models.Player) []*models.Order {
+func MatchOrdersWithDiplomacy(exchange *models.Exchange, players map[string]*models.Player, state *models.GameState) []*models.Order {
+	var filledOrders []*models.Order
+
+	resourceTypes := []models.ResourceType{
+		models.IronOre,
+		models.Titanium,
+		models.Helium3,
+		models.RareEarth,
+		models.IceCrystal,
+		models.Fuel,
+	}
+
+	preMatchVolumes := make(map[models.ResourceType]*ResourceVolume)
+	for _, resource := range resourceTypes {
+		buyOrders := getOrdersByResource(exchange.BuyOrders, resource)
+		sellOrders := getOrdersByResource(exchange.SellOrders, resource)
+		totalBuy := 0.0
+		totalSell := 0.0
+		for _, o := range buyOrders {
+			totalBuy += o.Quantity - o.FilledQty
+		}
+		for _, o := range sellOrders {
+			totalSell += o.Quantity - o.FilledQty
+		}
+		preMatchVolumes[resource] = &ResourceVolume{BuyVolume: totalBuy, SellVolume: totalSell}
+	}
+
+	for _, resource := range resourceTypes {
+		filled := matchResourceOrders(exchange, resource, players, state)
+		filledOrders = append(filledOrders, filled...)
+	}
+
+	UpdatePricesWithVolumes(exchange, preMatchVolumes)
+
+	return filledOrders
+}
+
+func matchResourceOrders(exchange *models.Exchange, resource models.ResourceType, players map[string]*models.Player, gameState *models.GameState) []*models.Order {
 	var filledOrders []*models.Order
 
 	buyOrders := getOrdersByResource(exchange.BuyOrders, resource)
@@ -154,8 +191,16 @@ func matchResourceOrders(exchange *models.Exchange, resource models.ResourceType
 		}
 
 		totalCost := tradeQty * tradePrice
-		buyerFee := totalCost * exchange.FeeRate
-		sellerFee := totalCost * exchange.FeeRate
+
+		buyerFeeMultiplier := 1.0
+		sellerFeeMultiplier := 1.0
+		if gameState != nil {
+			buyerFeeMultiplier = GetTradeFeeMultiplier(gameState, buyOrder.PlayerID, sellOrder.PlayerID)
+			sellerFeeMultiplier = GetTradeFeeMultiplier(gameState, sellOrder.PlayerID, buyOrder.PlayerID)
+		}
+
+		buyerFee := totalCost * exchange.FeeRate * buyerFeeMultiplier
+		sellerFee := totalCost * exchange.FeeRate * sellerFeeMultiplier
 
 		if buyer.Credits < totalCost+buyerFee {
 			buyIdx++

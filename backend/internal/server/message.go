@@ -15,6 +15,7 @@ const (
 	MsgTypeError            = "error"
 	MsgTypeTurnReport       = "turn_report"
 	MsgTypeTurnReportAck    = "turn_report_ack"
+	MsgTypeAllianceInvite   = "alliance_invite"
 )
 
 const (
@@ -45,6 +46,19 @@ const (
 	ActionUpgradeRefinery   = "upgrade_refinery"
 	ActionGetGameState      = "get_game_state"
 	ActionConfirmTurnReport = "confirm_turn_report"
+	ActionCreateAlliance        = "create_alliance"
+	ActionSendAllianceInvite    = "send_alliance_invite"
+	ActionAcceptAllianceInvite  = "accept_alliance_invite"
+	ActionRejectAllianceInvite  = "reject_alliance_invite"
+	ActionLeaveAlliance         = "leave_alliance"
+	ActionKickAllianceMember    = "kick_alliance_member"
+	ActionDisbandAlliance       = "disband_alliance"
+	ActionCreateTradeAgreement  = "create_trade_agreement"
+	ActionRenewTradeAgreement   = "renew_trade_agreement"
+	ActionInitiateJointMilitary = "initiate_joint_military"
+	ActionJoinMilitaryAction    = "join_military_action"
+	ActionDeclineMilitaryAction = "decline_military_action"
+	ActionTransferLeadership    = "transfer_leadership"
 )
 
 type Message struct {
@@ -108,6 +122,15 @@ type TurnReportAckData struct {
 	Turn     int    `json:"turn"`
 	PlayerID string `json:"player_id"`
 	Confirmed bool  `json:"confirmed"`
+}
+
+type AllianceInviteData struct {
+	AllianceID   string `json:"alliance_id"`
+	AllianceName string `json:"alliance_name"`
+	InviterID    string `json:"inviter_id"`
+	InviterName  string `json:"inviter_name"`
+	TargetID     string `json:"target_id"`
+	ExpiryTurn   int    `json:"expiry_turn"`
 }
 
 func (m *Message) ParseTurnReportAck() (*TurnReportAckData, error) {

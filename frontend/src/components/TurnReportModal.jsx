@@ -297,6 +297,35 @@ function TurnReportModal({ report, onConfirm, confirmations, players }) {
             )}
           </section>
 
+          {report.diplomacy && report.diplomacy.changes && report.diplomacy.changes.length > 0 && (
+            <section className="report-section">
+              <h3 className="report-section-title">
+                <span className="section-icon">🤝</span> 外交动态
+              </h3>
+              <div className="diplomacy-report-list">
+                {report.diplomacy.changes.map((dc, idx) => {
+                  const playerName = playerMap[dc.player_id]
+                    ? (playerMap[dc.player_id].company_name || playerMap[dc.player_id].name)
+                    : dc.player_id;
+                  const isPositive = dc.change > 0;
+                  const changeStr = isPositive ? `+${dc.change}` : `${dc.change}`;
+                  return (
+                    <div key={idx} className="diplomacy-report-item">
+                      <span className="diplomacy-report-player">{playerName}</span>
+                      <span className="diplomacy-report-reason">{dc.reason}</span>
+                      <span className={`diplomacy-report-change ${isPositive ? 'text-positive' : 'text-negative'}`}>
+                        {changeStr}
+                      </span>
+                      <span className="diplomacy-report-values">
+                        {dc.old_value} → {dc.new_value}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           <section className="report-section">
             <h3 className="report-section-title">
               <span className="section-icon">🏆</span> 排名变动

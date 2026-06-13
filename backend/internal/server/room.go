@@ -678,3 +678,133 @@ func (r *Room) UpgradeRefinery(playerID string, refineryID string) error {
 
 	return r.game.UpgradeRefinery(playerID, refineryID)
 }
+
+func (r *Room) CreateAlliance(playerID string, name string, color models.AllianceColor) (*models.Alliance, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.CreateAlliance(playerID, name, color)
+}
+
+func (r *Room) SendAllianceInvite(playerID string, allianceID string, targetPlayerID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.SendAllianceInvite(playerID, allianceID, targetPlayerID)
+}
+
+func (r *Room) AcceptAllianceInvite(playerID string, allianceID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.AcceptAllianceInvite(playerID, allianceID)
+}
+
+func (r *Room) RejectAllianceInvite(playerID string, allianceID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.RejectAllianceInvite(playerID, allianceID)
+}
+
+func (r *Room) LeaveAlliance(playerID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.LeaveAlliance(playerID)
+}
+
+func (r *Room) KickAllianceMember(leaderID string, targetID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.KickAllianceMember(leaderID, targetID)
+}
+
+func (r *Room) DisbandAlliance(leaderID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.DisbandAlliance(leaderID)
+}
+
+func (r *Room) CreateTradeAgreement(playerID string, targetPlayerID string) (*models.TradeAgreement, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.CreateTradeAgreement(playerID, targetPlayerID)
+}
+
+func (r *Room) RenewTradeAgreement(playerID string, agreementID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.RenewTradeAgreement(playerID, agreementID)
+}
+
+func (r *Room) InitiateJointMilitaryAction(initiatorID string, targetPlayerID string, targetBodyID string) (*models.JointMilitaryAction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.InitiateJointMilitaryAction(initiatorID, targetPlayerID, targetBodyID)
+}
+
+func (r *Room) JoinMilitaryAction(playerID string, actionID string, fleetID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.JoinMilitaryAction(playerID, actionID, fleetID)
+}
+
+func (r *Room) DeclineMilitaryAction(playerID string, actionID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.DeclineMilitaryAction(playerID, actionID)
+}
+
+func (r *Room) TransferLeadership(currentLeaderID string, newLeaderID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.TransferLeadership(currentLeaderID, newLeaderID)
+}

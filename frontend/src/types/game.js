@@ -8,6 +8,7 @@ export const MESSAGE_TYPES = {
   ERROR: 'error',
   TURN_REPORT: 'turn_report',
   TURN_REPORT_ACK: 'turn_report_ack',
+  ALLIANCE_INVITE: 'alliance_invite',
 };
 
 export const PLAYER_ACTIONS = {
@@ -25,6 +26,19 @@ export const PLAYER_ACTIONS = {
   LIST_ROOMS: 'list_rooms',
   START_GAME: 'start_game',
   CONFIRM_TURN_REPORT: 'confirm_turn_report',
+  CREATE_ALLIANCE: 'create_alliance',
+  SEND_ALLIANCE_INVITE: 'send_alliance_invite',
+  ACCEPT_ALLIANCE_INVITE: 'accept_alliance_invite',
+  REJECT_ALLIANCE_INVITE: 'reject_alliance_invite',
+  LEAVE_ALLIANCE: 'leave_alliance',
+  KICK_ALLIANCE_MEMBER: 'kick_alliance_member',
+  DISBAND_ALLIANCE: 'disband_alliance',
+  CREATE_TRADE_AGREEMENT: 'create_trade_agreement',
+  RENEW_TRADE_AGREEMENT: 'renew_trade_agreement',
+  INITIATE_JOINT_MILITARY: 'initiate_joint_military',
+  JOIN_MILITARY_ACTION: 'join_military_action',
+  DECLINE_MILITARY_ACTION: 'decline_military_action',
+  TRANSFER_LEADERSHIP: 'transfer_leadership',
 };
 
 export const CELESTIAL_TYPES = {
@@ -117,4 +131,26 @@ export const CELESTIAL_TYPE_NAMES = {
   asteroid_belt: '小行星带',
   gas_giant: '气态巨星',
   terrestrial: '类地行星',
+};
+
+export const ALLIANCE_COLORS = [
+  { id: '#FF4444', name: '红色' },
+  { id: '#4488FF', name: '蓝色' },
+  { id: '#44FF44', name: '绿色' },
+  { id: '#FFFF44', name: '黄色' },
+  { id: '#FF44FF', name: '紫色' },
+  { id: '#44FFFF', name: '青色' },
+];
+
+export const DIPLOMACY_STATUS = {
+  HOSTILE: 'hostile',
+  NEUTRAL: 'neutral',
+  FRIENDLY: 'friendly',
+};
+
+export const MILITARY_ACTION_STATUS = {
+  RECRUITING: 'recruiting',
+  IN_PROGRESS: 'in_progress',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
 };

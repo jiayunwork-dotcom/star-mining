@@ -39,6 +39,12 @@ const initialState = {
   randomEvents: [],
   blockades: [],
   bids: [],
+  alliances: [],
+  tradeAgreements: [],
+  jointMilitaryActions: [],
+  diplomacyRelations: [],
+  playerCooldowns: [],
+  allianceInvites: [],
   gameOver: false,
   winnerId: '',
   maxTurns: 60,
@@ -166,6 +172,20 @@ function gameReducer(state, action) {
         },
       };
 
+    case 'ADD_ALLIANCE_INVITE':
+      return {
+        ...state,
+        allianceInvites: [...state.allianceInvites, action.payload],
+      };
+
+    case 'REMOVE_ALLIANCE_INVITE':
+      return {
+        ...state,
+        allianceInvites: state.allianceInvites.filter(
+          (inv) => inv.alliance_id !== action.payload.alliance_id
+        ),
+      };
+
     default:
       return state;
   }
@@ -198,6 +218,11 @@ function parseGameState(data) {
   if (gameData.random_events !== undefined) result.randomEvents = gameData.random_events;
   if (gameData.blockades !== undefined) result.blockades = gameData.blockades;
   if (gameData.bids !== undefined) result.bids = gameData.bids;
+  if (gameData.alliances !== undefined) result.alliances = gameData.alliances;
+  if (gameData.trade_agreements !== undefined) result.tradeAgreements = gameData.trade_agreements;
+  if (gameData.joint_military_actions !== undefined) result.jointMilitaryActions = gameData.joint_military_actions;
+  if (gameData.diplomacy_relations !== undefined) result.diplomacyRelations = gameData.diplomacy_relations;
+  if (gameData.player_cooldowns !== undefined) result.playerCooldowns = gameData.player_cooldowns;
 
   if (data.players && Array.isArray(data.players)) {
     result.players = data.players;
@@ -324,6 +349,12 @@ export function GameProvider({ children }) {
       console.error('[游戏错误]', data);
     });
 
+    const unlistenAllianceInvite = ws.on(MESSAGE_TYPES.ALLIANCE_INVITE, (data) => {
+      if (data && data.target_id === ws.playerId) {
+        dispatch({ type: 'ADD_ALLIANCE_INVITE', payload: data });
+      }
+    });
+
     ws.on('open', handleOpen);
     ws.on('close', handleClose);
 
@@ -340,6 +371,7 @@ export function GameProvider({ children }) {
       unlistenEvent();
       unlistenSystem();
       unlistenError();
+      unlistenAllianceInvite();
     };
   }, [state.currentPage]);
 
@@ -520,6 +552,69 @@ export function GameProvider({ children }) {
     dispatch({ type: 'HIDE_TURN_REPORT' });
   }, [state.reportConfirmations, state.playerId]);
 
+  const createAlliance = useCallback((name, color) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.CREATE_ALLIANCE, { name, color });
+  }, []);
+
+  const sendAllianceInvite = useCallback((allianceId, targetPlayerId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.SEND_ALLIANCE_INVITE, {
+      alliance_id: allianceId,
+      target_player_id: targetPlayerId,
+    });
+  }, []);
+
+  const acceptAllianceInvite = useCallback((allianceId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.ACCEPT_ALLIANCE_INVITE, { alliance_id: allianceId });
+    dispatch({ type: 'REMOVE_ALLIANCE_INVITE', payload: { alliance_id: allianceId } });
+  }, []);
+
+  const rejectAllianceInvite = useCallback((allianceId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.REJECT_ALLIANCE_INVITE, { alliance_id: allianceId });
+    dispatch({ type: 'REMOVE_ALLIANCE_INVITE', payload: { alliance_id: allianceId } });
+  }, []);
+
+  const leaveAlliance = useCallback(() => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.LEAVE_ALLIANCE, {});
+  }, []);
+
+  const kickAllianceMember = useCallback((targetPlayerId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.KICK_ALLIANCE_MEMBER, { target_player_id: targetPlayerId });
+  }, []);
+
+  const disbandAlliance = useCallback(() => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.DISBAND_ALLIANCE, {});
+  }, []);
+
+  const createTradeAgreement = useCallback((targetPlayerId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.CREATE_TRADE_AGREEMENT, { target_player_id: targetPlayerId });
+  }, []);
+
+  const renewTradeAgreement = useCallback((agreementId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.RENEW_TRADE_AGREEMENT, { agreement_id: agreementId });
+  }, []);
+
+  const initiateJointMilitary = useCallback((targetPlayerId, targetBodyId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.INITIATE_JOINT_MILITARY, {
+      target_player_id: targetPlayerId,
+      target_body_id: targetBodyId,
+    });
+  }, []);
+
+  const joinMilitaryAction = useCallback((actionId, fleetId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.JOIN_MILITARY_ACTION, {
+      action_id: actionId,
+      fleet_id: fleetId,
+    });
+  }, []);
+
+  const declineMilitaryAction = useCallback((actionId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.DECLINE_MILITARY_ACTION, { action_id: actionId });
+  }, []);
+
+  const transferLeadership = useCallback((newLeaderId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.TRANSFER_LEADERSHIP, { new_leader_id: newLeaderId });
+  }, []);
+
   const value = {
     state,
     connect,
@@ -544,6 +639,19 @@ export function GameProvider({ children }) {
     selectCelestial,
     setPage,
     confirmTurnReport,
+    createAlliance,
+    sendAllianceInvite,
+    acceptAllianceInvite,
+    rejectAllianceInvite,
+    leaveAlliance,
+    kickAllianceMember,
+    disbandAlliance,
+    createTradeAgreement,
+    renewTradeAgreement,
+    initiateJointMilitary,
+    joinMilitaryAction,
+    declineMilitaryAction,
+    transferLeadership,
     getAllCelestials: () => getAllCelestials(state.gameMap),
   };
 

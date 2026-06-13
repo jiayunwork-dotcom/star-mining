@@ -145,25 +145,32 @@ func (gi *GameInstance) Initialize(playerIDs []string, playerNames map[string]st
 	}
 
 	gi.State = &models.GameState{
-		ID:            gi.ID,
-		Turn:          1,
-		Phase:         models.PhasePlanning,
-		Players:       players,
-		GameMap:       gameMap,
-		Exchanges:     exchanges,
-		RandomEvents:  make([]*models.RandomEvent, 0),
-		Blockades:     make([]*models.Blockade, 0),
-		Bids:          make([]*models.Bid, 0),
-		Started:       false,
-		GameOver:      false,
-		WinnerID:      "",
-		MaxTurns:      gi.maxTurns,
-		Seed:          seed,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		WinCondition:  "net_worth",
-		TargetCredits: DefaultWinCredits,
+		ID:                   gi.ID,
+		Turn:                 1,
+		Phase:                models.PhasePlanning,
+		Players:              players,
+		GameMap:              gameMap,
+		Exchanges:            exchanges,
+		RandomEvents:         make([]*models.RandomEvent, 0),
+		Blockades:            make([]*models.Blockade, 0),
+		Bids:                 make([]*models.Bid, 0),
+		Alliances:            make([]*models.Alliance, 0),
+		TradeAgreements:      make([]*models.TradeAgreement, 0),
+		JointMilitaryActions: make([]*models.JointMilitaryAction, 0),
+		DiplomacyRelations:   make([]*models.DiplomacyRelation, 0),
+		PlayerCooldowns:      make([]*models.PlayerCooldown, 0),
+		Started:              false,
+		GameOver:             false,
+		WinnerID:             "",
+		MaxTurns:             gi.maxTurns,
+		Seed:                 seed,
+		CreatedAt:            time.Now(),
+		UpdatedAt:            time.Now(),
+		WinCondition:         "net_worth",
+		TargetCredits:        DefaultWinCredits,
 	}
+
+	InitDiplomacyRelations(gi.State)
 
 	gi.started = false
 
@@ -191,6 +198,8 @@ func (gi *GameInstance) ProcessTurn() error {
 	gi.reportReady = false
 	gi.saveTurnSnapshots()
 	gi.turnActivities = make(map[string]*TurnActivity)
+
+	var diplomacyChanges []*models.DiplomacyChange
 
 	newEvents := gi.State.RandomEvents
 	playerMap := make(map[string]*models.Player)
@@ -241,7 +250,7 @@ func (gi *GameInstance) ProcessTurn() error {
 	}
 
 	for _, exchange := range gi.State.Exchanges {
-		_ = MatchOrders(exchange, playerMap)
+		_ = MatchOrdersWithDiplomacy(exchange, playerMap, gi.State)
 	}
 
 	for _, player := range gi.State.Players {
@@ -261,6 +270,10 @@ func (gi *GameInstance) ProcessTurn() error {
 	UpdateStockPrices(gi.State.Players, gi.State.Exchanges)
 
 	gi.checkTakeovers()
+
+	diplomacyChanges = ProcessDiplomacyTurn(gi.State)
+	combatRecords := ProcessJointMilitaryActions(gi.State, playerMap, gi.rng)
+	_ = combatRecords
 
 	gi.applyInterest()
 
@@ -284,7 +297,7 @@ func (gi *GameInstance) ProcessTurn() error {
 
 	gi.checkWinConditions()
 
-	gi.generateTurnReports(newTurnEventsStart)
+	gi.generateTurnReports(newTurnEventsStart, diplomacyChanges)
 	gi.reportReady = true
 
 	return nil
@@ -390,6 +403,10 @@ func (gi *GameInstance) EndGame() {
 func (gi *GameInstance) GetPlayer(playerID string) (*models.Player, bool) {
 	player, exists := gi.players[playerID]
 	return player, exists
+}
+
+func (gi *GameInstance) FindPlayerAlliancePublic(playerID string) *models.Alliance {
+	return FindPlayerAlliance(gi.State, playerID)
 }
 
 func (gi *GameInstance) GetGameState() *models.GameState {
@@ -716,6 +733,17 @@ func (gi *GameInstance) BlockLane(playerID string, laneID string, toll float64) 
 		return fmt.Errorf("lane not found")
 	}
 
+	for _, galaxy := range gi.State.GameMap.Galaxies {
+		for _, cb := range galaxy.CelestialBodies {
+			if cb.ID == lane.ToBodyID {
+				if cb.OwnerPlayerID != "" && cb.OwnerPlayerID != playerID && AreAllies(gi.State, playerID, cb.OwnerPlayerID) {
+					return fmt.Errorf("不能对盟友的航线实施封锁")
+				}
+				break
+			}
+		}
+	}
+
 	if len(player.Fleets) == 0 {
 		return fmt.Errorf("player has no fleets")
 	}
@@ -734,6 +762,22 @@ func (gi *GameInstance) BlockLane(playerID string, laneID string, toll float64) 
 
 	blockade := NewBlockade(playerID, lane.ToBodyID, fleet.ID, toll)
 	gi.State.Blockades = append(gi.State.Blockades, blockade)
+
+	var targetBody *models.CelestialBody
+	for _, galaxy := range gi.State.GameMap.Galaxies {
+		for _, cb := range galaxy.CelestialBodies {
+			if cb.ID == lane.ToBodyID {
+				targetBody = cb
+				break
+			}
+		}
+		if targetBody != nil {
+			break
+		}
+	}
+	if targetBody != nil && targetBody.OwnerPlayerID != "" && targetBody.OwnerPlayerID != playerID {
+		ModifyDiplomacyValue(gi.State, playerID, targetBody.OwnerPlayerID, -10.0, "封锁航线")
+	}
 
 	gi.State.UpdatedAt = time.Now()
 
@@ -759,6 +803,10 @@ func (gi *GameInstance) HirePirates(playerID string, targetPlayerID string) erro
 		return fmt.Errorf("target player is defeated or bankrupt")
 	}
 
+	if AreAllies(gi.State, playerID, targetPlayerID) {
+		return fmt.Errorf("不能对盟友雇佣海盗")
+	}
+
 	cost := 500.0
 	if player.Credits < cost {
 		return fmt.Errorf("not enough credits")
@@ -766,6 +814,8 @@ func (gi *GameInstance) HirePirates(playerID string, targetPlayerID string) erro
 
 	player.Credits -= cost
 	player.Reputation -= 10
+
+	ModifyDiplomacyValue(gi.State, playerID, targetPlayerID, -20.0, "雇佣海盗攻击")
 
 	if len(targetPlayer.Fleets) > 0 {
 		fleet := targetPlayer.Fleets[0]
@@ -808,6 +858,11 @@ func (gi *GameInstance) BuyStock(playerID string, targetPlayerID string, shares 
 	err := BuyStock(player, targetPlayer, sellerStock, shares, gi.State.Exchanges)
 	if err != nil {
 		return err
+	}
+
+	ownershipPct := GetOwnershipPercentage(player, targetPlayerID)
+	if ownershipPct > 20.0 {
+		ModifyDiplomacyValue(gi.State, playerID, targetPlayerID, -15.0, fmt.Sprintf("收购股份超过20%%(当前%.1f%%)", ownershipPct))
 	}
 
 	gi.State.UpdatedAt = time.Now()
@@ -1064,6 +1119,159 @@ func (gi *GameInstance) UpgradeRefinery(playerID string, refineryID string) erro
 
 	gi.State.UpdatedAt = time.Now()
 
+	return nil
+}
+
+func (gi *GameInstance) CreateAlliance(playerID string, name string, color models.AllianceColor) (*models.Alliance, error) {
+	player := gi.getPlayer(playerID)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return nil, fmt.Errorf("player is defeated or bankrupt")
+	}
+	alliance, err := CreateAlliance(gi.State, playerID, name, color)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return alliance, nil
+}
+
+func (gi *GameInstance) SendAllianceInvite(playerID string, allianceID string, targetPlayerID string) error {
+	player := gi.getPlayer(playerID)
+	if player == nil {
+		return fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return fmt.Errorf("player is defeated or bankrupt")
+	}
+	err := SendAllianceInvite(gi.State, allianceID, playerID, targetPlayerID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
+func (gi *GameInstance) AcceptAllianceInvite(playerID string, allianceID string) error {
+	err := AcceptAllianceInvite(gi.State, allianceID, playerID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
+func (gi *GameInstance) RejectAllianceInvite(playerID string, allianceID string) error {
+	err := RejectAllianceInvite(gi.State, allianceID, playerID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
+func (gi *GameInstance) LeaveAlliance(playerID string) error {
+	err := LeaveAlliance(gi.State, playerID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
+func (gi *GameInstance) KickAllianceMember(leaderID string, targetID string) error {
+	err := KickAllianceMember(gi.State, leaderID, targetID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
+func (gi *GameInstance) DisbandAlliance(leaderID string) error {
+	err := DisbandAlliance(gi.State, leaderID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
+func (gi *GameInstance) CreateTradeAgreement(playerID1 string, playerID2 string) (*models.TradeAgreement, error) {
+	player := gi.getPlayer(playerID1)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return nil, fmt.Errorf("player is defeated or bankrupt")
+	}
+	agreement, err := CreateTradeAgreement(gi.State, playerID1, playerID2)
+	if err != nil {
+		return nil, err
+	}
+	ModifyDiplomacyValue(gi.State, playerID1, playerID2, 15.0, "签订贸易协定")
+	gi.State.UpdatedAt = time.Now()
+	return agreement, nil
+}
+
+func (gi *GameInstance) RenewTradeAgreement(playerID string, agreementID string) error {
+	player := gi.getPlayer(playerID)
+	if player == nil {
+		return fmt.Errorf("player not found")
+	}
+	err := RenewTradeAgreement(gi.State, agreementID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
+func (gi *GameInstance) InitiateJointMilitaryAction(initiatorID string, targetPlayerID string, targetBodyID string) (*models.JointMilitaryAction, error) {
+	action, err := InitiateJointMilitaryAction(gi.State, initiatorID, targetPlayerID, targetBodyID)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return action, nil
+}
+
+func (gi *GameInstance) JoinMilitaryAction(playerID string, actionID string, fleetID string) error {
+	for _, action := range gi.State.JointMilitaryActions {
+		if action.ID == actionID {
+			err := JoinMilitaryAction(action, playerID, fleetID)
+			if err != nil {
+				return err
+			}
+			gi.State.UpdatedAt = time.Now()
+			return nil
+		}
+	}
+	return fmt.Errorf("军事行动不存在")
+}
+
+func (gi *GameInstance) DeclineMilitaryAction(playerID string, actionID string) error {
+	for _, action := range gi.State.JointMilitaryActions {
+		if action.ID == actionID {
+			err := DeclineMilitaryAction(action, playerID)
+			if err != nil {
+				return err
+			}
+			gi.State.UpdatedAt = time.Now()
+			return nil
+		}
+	}
+	return fmt.Errorf("军事行动不存在")
+}
+
+func (gi *GameInstance) TransferLeadership(currentLeaderID string, newLeaderID string) error {
+	err := TransferLeadership(gi.State, currentLeaderID, newLeaderID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
 	return nil
 }
 
@@ -1377,7 +1585,7 @@ func getResourceName(rt models.ResourceType) string {
 	return string(rt)
 }
 
-func (gi *GameInstance) generateTurnReports(newEventsStart int) {
+func (gi *GameInstance) generateTurnReports(newEventsStart int, diplomacyChanges []*models.DiplomacyChange) {
 	gi.turnReports = make(map[string]*models.TurnReport)
 	newRankings := gi.calculateRankings()
 	newRankMap := make(map[string]int)
@@ -1401,6 +1609,7 @@ func (gi *GameInstance) generateTurnReports(newEventsStart int) {
 		report.MarketChanges = gi.generateMarketChanges()
 		report.RandomEvents = gi.generateRandomEvents(player, newEventsStart)
 		report.Rankings = gi.generateRankings(player.ID, newRankMap, newScoreMap, snapshot)
+		report.Diplomacy = gi.generateDiplomacySection(player.ID, diplomacyChanges)
 		gi.turnReports[player.ID] = report
 	}
 }
@@ -1664,6 +1873,18 @@ func (gi *GameInstance) generateRankings(currentPlayerID string, newRankMap map[
 	})
 
 	return entries
+}
+
+func (gi *GameInstance) generateDiplomacySection(playerID string, allChanges []*models.DiplomacyChange) *models.DiplomacySection {
+	playerChanges := make([]*models.DiplomacyChange, 0)
+	for _, ch := range allChanges {
+		if ch.PlayerID == playerID || ch.Change != 0 {
+			playerChanges = append(playerChanges, ch)
+		}
+	}
+	return &models.DiplomacySection{
+		Changes: playerChanges,
+	}
 }
 
 func (gi *GameInstance) getBodyName(bodyID string) string {

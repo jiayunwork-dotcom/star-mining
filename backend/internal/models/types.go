@@ -399,6 +399,106 @@ type RankingChangeEntry struct {
 	IsDefeated     bool    `json:"is_defeated"`
 }
 
+type AllianceStatus string
+
+const (
+	AllianceActive  AllianceStatus = "active"
+	AlliancePending AllianceStatus = "pending"
+	AllianceDisbanded AllianceStatus = "disbanded"
+)
+
+type AllianceColor string
+
+const (
+	AllianceColorRed    AllianceColor = "#FF4444"
+	AllianceColorBlue   AllianceColor = "#4488FF"
+	AllianceColorGreen  AllianceColor = "#44FF44"
+	AllianceColorYellow AllianceColor = "#FFFF44"
+	AllianceColorPurple AllianceColor = "#FF44FF"
+	AllianceColorCyan   AllianceColor = "#44FFFF"
+)
+
+type TradeAgreementStatus string
+
+const (
+	TradeAgreementActive  TradeAgreementStatus = "active"
+	TradeAgreementExpired TradeAgreementStatus = "expired"
+)
+
+type MilitaryActionStatus string
+
+const (
+	MilitaryActionRecruiting MilitaryActionStatus = "recruiting"
+	MilitaryActionInProgress MilitaryActionStatus = "in_progress"
+	MilitaryActionCompleted  MilitaryActionStatus = "completed"
+	MilitaryActionCancelled  MilitaryActionStatus = "cancelled"
+)
+
+type Alliance struct {
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	LeaderID     string         `json:"leader_id"`
+	MemberIDs    []string       `json:"member_ids"`
+	Color        AllianceColor  `json:"color"`
+	Status       AllianceStatus `json:"status"`
+	CreatedTurn  int            `json:"created_turn"`
+	InviteExpiry map[string]int `json:"invite_expiry"`
+}
+
+type TradeAgreement struct {
+	ID           string                `json:"id"`
+	PlayerID1    string                `json:"player_id_1"`
+	PlayerID2    string                `json:"player_id_2"`
+	AllianceID   string                `json:"alliance_id"`
+	Status       TradeAgreementStatus  `json:"status"`
+	CreatedTurn  int                   `json:"created_turn"`
+	ExpiryTurn   int                   `json:"expiry_turn"`
+}
+
+type MilitaryParticipant struct {
+	PlayerID string `json:"player_id"`
+	FleetID  string `json:"fleet_id"`
+	Joined   bool   `json:"joined"`
+}
+
+type JointMilitaryAction struct {
+	ID            string                 `json:"id"`
+	AllianceID    string                 `json:"alliance_id"`
+	InitiatorID   string                 `json:"initiator_id"`
+	TargetPlayerID string                `json:"target_player_id"`
+	TargetBodyID  string                 `json:"target_body_id"`
+	Status        MilitaryActionStatus   `json:"status"`
+	Participants  []*MilitaryParticipant `json:"participants"`
+	CreatedTurn   int                    `json:"created_turn"`
+	DeadlineTurn  int                    `json:"deadline_turn"`
+	ArrivalTurn   int                    `json:"arrival_turn"`
+	TotalAttack   float64                `json:"total_attack"`
+}
+
+type DiplomacyRelation struct {
+	Player1ID string  `json:"player1_id"`
+	Player2ID string  `json:"player2_id"`
+	Value     float64 `json:"value"`
+}
+
+type DiplomacyChange struct {
+	PlayerID  string  `json:"player_id"`
+	OldValue  float64 `json:"old_value"`
+	NewValue  float64 `json:"new_value"`
+	Change    float64 `json:"change"`
+	Reason    string  `json:"reason"`
+}
+
+type DiplomacySection struct {
+	Changes []*DiplomacyChange `json:"changes"`
+}
+
+type PlayerCooldown struct {
+	PlayerID      string `json:"player_id"`
+	CooldownTurns int    `json:"cooldown_turns"`
+	LeftTurn      int    `json:"left_turn"`
+}
+
 type TurnReport struct {
 	Turn              int                    `json:"turn"`
 	PlayerID          string                 `json:"player_id"`
@@ -409,27 +509,33 @@ type TurnReport struct {
 	MarketChanges     []*MarketPriceChange   `json:"market_changes"`
 	RandomEvents      []*RandomEventRecord   `json:"random_events"`
 	Rankings          []*RankingChangeEntry  `json:"rankings"`
+	Diplomacy         *DiplomacySection      `json:"diplomacy"`
 	GeneratedAt       time.Time              `json:"generated_at"`
 }
 
 type GameState struct {
-	ID             string            `json:"id"`
-	Turn           int               `json:"turn"`
-	Phase          GamePhase         `json:"phase"`
-	Players        []*Player         `json:"players"`
-	GameMap        *GameMap          `json:"game_map"`
-	Exchanges      []*Exchange       `json:"exchanges"`
-	RandomEvents   []*RandomEvent    `json:"random_events"`
-	Blockades      []*Blockade       `json:"blockades"`
-	Bids           []*Bid            `json:"bids"`
-	Started        bool              `json:"started"`
-	GameOver       bool              `json:"game_over"`
-	WinnerID       string            `json:"winner_id"`
-	MaxTurns       int               `json:"max_turns"`
-	Seed           int64             `json:"seed"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	WinCondition   string            `json:"win_condition"`
-	TargetCredits  float64           `json:"target_credits"`
-	FinalRankings  []*PlayerRanking  `json:"final_rankings"`
+	ID                  string               `json:"id"`
+	Turn                int                  `json:"turn"`
+	Phase               GamePhase            `json:"phase"`
+	Players             []*Player            `json:"players"`
+	GameMap             *GameMap             `json:"game_map"`
+	Exchanges           []*Exchange          `json:"exchanges"`
+	RandomEvents        []*RandomEvent       `json:"random_events"`
+	Blockades           []*Blockade          `json:"blockades"`
+	Bids                []*Bid               `json:"bids"`
+	Alliances           []*Alliance          `json:"alliances"`
+	TradeAgreements     []*TradeAgreement    `json:"trade_agreements"`
+	JointMilitaryActions []*JointMilitaryAction `json:"joint_military_actions"`
+	DiplomacyRelations  []*DiplomacyRelation `json:"diplomacy_relations"`
+	PlayerCooldowns     []*PlayerCooldown    `json:"player_cooldowns"`
+	Started             bool                 `json:"started"`
+	GameOver            bool                 `json:"game_over"`
+	WinnerID            string               `json:"winner_id"`
+	MaxTurns            int                  `json:"max_turns"`
+	Seed                int64                `json:"seed"`
+	CreatedAt           time.Time            `json:"created_at"`
+	UpdatedAt           time.Time            `json:"updated_at"`
+	WinCondition        string               `json:"win_condition"`
+	TargetCredits       float64              `json:"target_credits"`
+	FinalRankings       []*PlayerRanking     `json:"final_rankings"`
 }
