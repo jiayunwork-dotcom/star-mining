@@ -544,6 +544,10 @@ func ProcessDiplomacyTurn(state *models.GameState) []*models.DiplomacyChange {
 		}
 		for i := 0; i < len(alliance.MemberIDs); i++ {
 			for j := i + 1; j < len(alliance.MemberIDs); j++ {
+				currentValue := GetDiplomacyValue(state, alliance.MemberIDs[i], alliance.MemberIDs[j])
+				if currentValue >= AllianceRelationCap {
+					continue
+				}
 				change := ModifyDiplomacyValue(state, alliance.MemberIDs[i], alliance.MemberIDs[j], 1.0, "联盟每回合自动增加")
 				if change != nil && change.Change > 0 {
 					for _, r := range state.DiplomacyRelations {
@@ -551,11 +555,15 @@ func ProcessDiplomacyTurn(state *models.GameState) []*models.DiplomacyChange {
 							(r.Player1ID == alliance.MemberIDs[j] && r.Player2ID == alliance.MemberIDs[i]) {
 							if r.Value > AllianceRelationCap {
 								r.Value = AllianceRelationCap
+								change.NewValue = r.Value
+								change.Change = r.Value - change.OldValue
 							}
 							break
 						}
 					}
-					changes = append(changes, change)
+					if change.Change > 0 {
+						changes = append(changes, change)
+					}
 				}
 			}
 		}
@@ -647,24 +655,37 @@ func ProcessJointMilitaryActions(state *models.GameState, playerMap map[string]*
 			TotalCargo:    make(models.Resources),
 		}
 
-		for _, fleet := range defender.Fleets {
-			if fleet.CurrentBodyID == action.TargetBodyID && !fleet.IsMoving {
-				defenderFleet.Ships = append(defenderFleet.Ships, fleet.Ships...)
+		if action.TargetBodyID != "" {
+			for _, fleet := range defender.Fleets {
+				if fleet.CurrentBodyID == action.TargetBodyID && !fleet.IsMoving && len(fleet.Ships) > 0 {
+					defenderFleet.Ships = append(defenderFleet.Ships, fleet.Ships...)
+				}
 			}
-		}
 
-		defenderAlliance := FindPlayerAlliance(state, action.TargetPlayerID)
-		if defenderAlliance != nil {
-			for _, allyID := range defenderAlliance.MemberIDs {
-				if allyID == action.TargetPlayerID {
-					continue
-				}
-				ally := playerMap[allyID]
-				if ally == nil {
-					continue
-				}
-				for _, fleet := range ally.Fleets {
-					if fleet.CurrentBodyID == action.TargetBodyID && !fleet.IsMoving {
+			defenderAlliance := FindPlayerAlliance(state, action.TargetPlayerID)
+			if defenderAlliance != nil {
+				for _, allyID := range defenderAlliance.MemberIDs {
+					if allyID == action.TargetPlayerID {
+						continue
+					}
+					ally := playerMap[allyID]
+					if ally == nil || ally.IsDefeated || ally.IsBankrupt {
+						continue
+					}
+					allyAlliance := FindPlayerAlliance(state, allyID)
+					if allyAlliance == nil || allyAlliance.ID != defenderAlliance.ID {
+						continue
+					}
+					for _, fleet := range ally.Fleets {
+						if fleet.CurrentBodyID == "" || fleet.CurrentBodyID != action.TargetBodyID {
+							continue
+						}
+						if fleet.IsMoving {
+							continue
+						}
+						if len(fleet.Ships) == 0 {
+							continue
+						}
 						defenderFleet.Ships = append(defenderFleet.Ships, fleet.Ships...)
 					}
 				}

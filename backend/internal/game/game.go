@@ -855,14 +855,16 @@ func (gi *GameInstance) BuyStock(playerID string, targetPlayerID string, shares 
 		return fmt.Errorf("target player has no stock")
 	}
 
+	beforeOwnershipPct := GetOwnershipPercentage(player, targetPlayerID)
+
 	err := BuyStock(player, targetPlayer, sellerStock, shares, gi.State.Exchanges)
 	if err != nil {
 		return err
 	}
 
-	ownershipPct := GetOwnershipPercentage(player, targetPlayerID)
-	if ownershipPct > 20.0 {
-		ModifyDiplomacyValue(gi.State, playerID, targetPlayerID, -15.0, fmt.Sprintf("收购股份超过20%%(当前%.1f%%)", ownershipPct))
+	afterOwnershipPct := GetOwnershipPercentage(player, targetPlayerID)
+	if beforeOwnershipPct <= 20.0 && afterOwnershipPct > 20.0 {
+		ModifyDiplomacyValue(gi.State, playerID, targetPlayerID, -15.0, fmt.Sprintf("收购股份超过20%%(当前%.1f%%)", afterOwnershipPct))
 	}
 
 	gi.State.UpdatedAt = time.Now()
