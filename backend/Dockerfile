@@ -4,12 +4,8 @@ ENV GO111MODULE=on
 
 WORKDIR /app
 
-COPY go.mod ./
-RUN go mod tidy
-
 COPY . .
-
-RUN CGO_ENABLED=0 GOOS=linux go build -o star-mining-server ./cmd/server
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o star-mining-server ./cmd/server
 
 FROM alpine:latest
 

@@ -106,7 +106,6 @@ func (gi *GameInstance) Initialize(playerIDs []string, playerNames map[string]st
 		players = append(players, player)
 
 		if len(gameMap.Galaxies) > 0 && len(gameMap.Galaxies[0].CelestialBodies) > 0 {
-			startBody := gameMap.Galaxies[0].CelestialBodies[0]
 			ship := NewShip(models.MiningShip, playerID)
 			ship.ID = fmt.Sprintf("ship-%s-%d", playerID, i)
 			player.Ships = append(player.Ships, ship)

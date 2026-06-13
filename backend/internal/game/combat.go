@@ -69,8 +69,8 @@ func SimulateCombat(attacker, defender *models.Fleet, attackerTechBonus, defende
 	result.AttackerDamage = attackerDamage
 	result.DefenderDamage = defenderDamage
 
-	distributeDamage(defender, attackerDamage, result.DefenderLosses)
-	distributeDamage(attacker, defenderDamage, result.AttackerLosses)
+	distributeDamage(defender, attackerDamage, &result.DefenderLosses)
+	distributeDamage(attacker, defenderDamage, &result.AttackerLosses)
 
 	attackerAlive := len(attacker.Ships) > 0
 	defenderAlive := len(defender.Ships) > 0
