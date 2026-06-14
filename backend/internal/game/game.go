@@ -274,13 +274,22 @@ func (gi *GameInstance) ProcessTurn() error {
 
 	gi.checkTakeovers()
 
-	diplomacyChanges = ProcessDiplomacyTurn(gi.State)
-	combatRecords := ProcessJointMilitaryActions(gi.State, playerMap, gi.rng)
-	var warEvents []*models.WarEvent
 	var sanctionEvents []*models.SanctionEvent
+	diplomacyChanges, sanctionEvents = ProcessDiplomacyTurn(gi.State)
+	combatRecords := ProcessJointMilitaryActions(gi.State, playerMap, gi.rng)
+	autoCombatRecords := ProcessWarAutoCombat(gi.State, playerMap, gi.rng)
+	var warEvents []*models.WarEvent
 	for _, war := range gi.State.AllianceWars {
 		if war.Status != models.WarActive {
 			continue
+		}
+		attackerAlliance := FindAllianceByID(gi.State, war.AttackerAllianceID)
+		defenderAlliance := FindAllianceByID(gi.State, war.DefenderAllianceID)
+		if attackerAlliance != nil {
+			war.AttackerTotalAssets = calculateAllianceTotalAssets(gi.State, attackerAlliance)
+		}
+		if defenderAlliance != nil {
+			war.DefenderTotalAssets = calculateAllianceTotalAssets(gi.State, defenderAlliance)
 		}
 		surrenderAllianceID, shouldSuggest := CheckSurrenderSuggestion(gi.State, war)
 		if shouldSuggest {
@@ -294,6 +303,7 @@ func (gi *GameInstance) ProcessTurn() error {
 		}
 	}
 	_ = combatRecords
+	_ = autoCombatRecords
 
 	gi.applyInterest()
 

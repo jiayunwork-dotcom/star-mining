@@ -497,13 +497,15 @@ const (
 )
 
 type AllianceWar struct {
-	ID              string    `json:"id"`
-	AttackerAllianceID string `json:"attacker_alliance_id"`
-	DefenderAllianceID string `json:"defender_alliance_id"`
-	DeclaredTurn    int       `json:"declared_turn"`
-	Status          WarStatus `json:"status"`
-	SurrenderedAllianceID string `json:"surrendered_alliance_id,omitempty"`
-	SurrenderTurn   int       `json:"surrender_turn,omitempty"`
+	ID                   string    `json:"id"`
+	AttackerAllianceID   string    `json:"attacker_alliance_id"`
+	DefenderAllianceID   string    `json:"defender_alliance_id"`
+	DeclaredTurn         int       `json:"declared_turn"`
+	Status               WarStatus `json:"status"`
+	SurrenderedAllianceID string   `json:"surrendered_alliance_id,omitempty"`
+	SurrenderTurn        int       `json:"surrender_turn,omitempty"`
+	AttackerTotalAssets  float64   `json:"attacker_total_assets"`
+	DefenderTotalAssets  float64   `json:"defender_total_assets"`
 }
 
 type SanctionProposalStatus string

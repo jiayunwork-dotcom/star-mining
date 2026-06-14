@@ -132,6 +132,15 @@ function DiplomacyPanel() {
 
   const warDuration = activeWar ? (state.turn - activeWar.declared_turn) : 0;
 
+  const myWarAssets = activeWar && myAlliance
+    ? (activeWar.attacker_alliance_id === myAlliance.id ? activeWar.attacker_total_assets : activeWar.defender_total_assets)
+    : 0;
+  const opponentWarAssets = activeWar && myAlliance
+    ? (activeWar.attacker_alliance_id === myAlliance.id ? activeWar.defender_total_assets : activeWar.attacker_total_assets)
+    : 0;
+  const totalWarAssets = myWarAssets + opponentWarAssets;
+  const myAssetPercent = totalWarAssets > 0 ? Math.max(5, Math.min(95, (myWarAssets / totalWarAssets) * 100)) : 50;
+
   const otherActiveAlliances = (alliances || []).filter(
     (a) => a.status === 'active' && a.id !== myAlliance?.id
   );
@@ -597,11 +606,11 @@ function DiplomacyPanel() {
               <div style={{ marginBottom: '4px' }}>
                 <span>双方资产对比</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                  <span style={{ fontSize: '12px' }}>{myAlliance?.name}</span>
+                  <span style={{ fontSize: '12px', minWidth: '60px', textAlign: 'right' }}>{Math.round(myWarAssets).toLocaleString()}</span>
                   <div style={{ flex: 1, height: '8px', background: '#333', borderRadius: '4px', overflow: 'hidden' }}>
-                    <div style={{ width: '50%', height: '100%', background: 'linear-gradient(90deg, #4488FF, #FF4444)', borderRadius: '4px' }} />
+                    <div style={{ width: `${myAssetPercent}%`, height: '100%', background: 'linear-gradient(90deg, #4488FF, #FF4444)', borderRadius: '4px' }} />
                   </div>
-                  <span style={{ fontSize: '12px' }}>{opponentAlliance?.name}</span>
+                  <span style={{ fontSize: '12px', minWidth: '60px' }}>{Math.round(opponentWarAssets).toLocaleString()}</span>
                 </div>
               </div>
               {isLeader && (

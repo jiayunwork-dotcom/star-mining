@@ -566,8 +566,9 @@ func CancelAllMilitaryActionsForAlliance(state *models.GameState, allianceID str
 	}
 }
 
-func ProcessDiplomacyTurn(state *models.GameState) []*models.DiplomacyChange {
+func ProcessDiplomacyTurn(state *models.GameState) ([]*models.DiplomacyChange, []*models.SanctionEvent) {
 	changes := make([]*models.DiplomacyChange, 0)
+	var sanctionEvents []*models.SanctionEvent
 
 	for _, alliance := range state.Alliances {
 		if alliance.Status != models.AllianceActive {
@@ -634,7 +635,7 @@ func ProcessDiplomacyTurn(state *models.GameState) []*models.DiplomacyChange {
 	}
 
 	ProcessExpiredSanctionProposals(state)
-	ProcessActiveSanctions(state)
+	sanctionEvents = ProcessActiveSanctions(state)
 
 	ProcessExpiredInvites(state)
 
@@ -642,7 +643,7 @@ func ProcessDiplomacyTurn(state *models.GameState) []*models.DiplomacyChange {
 
 	CleanCooldowns(state)
 
-	return changes
+	return changes, sanctionEvents
 }
 
 func ProcessJointMilitaryActions(state *models.GameState, playerMap map[string]*models.Player, rng *rand.Rand) []*models.CombatRecord {
@@ -785,6 +786,169 @@ func ProcessJointMilitaryActions(state *models.GameState, playerMap map[string]*
 			}
 			f.Ships = surviving
 			UpdateFleetStats(f)
+		}
+	}
+
+	return records
+}
+
+func ProcessWarAutoCombat(state *models.GameState, playerMap map[string]*models.Player, rng *rand.Rand) []*models.CombatRecord {
+	records := make([]*models.CombatRecord, 0)
+
+	for _, war := range state.AllianceWars {
+		if war.Status != models.WarActive {
+			continue
+		}
+
+		attackerFleets := make([]*models.Fleet, 0)
+		defenderFleets := make([]*models.Fleet, 0)
+
+		attackerAlliance := FindAllianceByID(state, war.AttackerAllianceID)
+		defenderAlliance := FindAllianceByID(state, war.DefenderAllianceID)
+		if attackerAlliance == nil || defenderAlliance == nil {
+			continue
+		}
+
+		attackerMemberSet := make(map[string]bool)
+		for _, mid := range attackerAlliance.MemberIDs {
+			attackerMemberSet[mid] = true
+		}
+		defenderMemberSet := make(map[string]bool)
+		for _, mid := range defenderAlliance.MemberIDs {
+			defenderMemberSet[mid] = true
+		}
+
+		for _, player := range state.Players {
+			if player.IsDefeated || player.IsBankrupt {
+				continue
+			}
+			isAttacker := attackerMemberSet[player.ID]
+			isDefender := defenderMemberSet[player.ID]
+			if !isAttacker && !isDefender {
+				continue
+			}
+			for _, fleet := range player.Fleets {
+				if fleet.IsMoving || len(fleet.Ships) == 0 {
+					continue
+				}
+				if fleet.CurrentBodyID == "" {
+					continue
+				}
+				if isAttacker {
+					attackerFleets = append(attackerFleets, fleet)
+				} else {
+					defenderFleets = append(defenderFleets, fleet)
+				}
+			}
+		}
+
+		attackerByBody := make(map[string][]*models.Fleet)
+		defenderByBody := make(map[string][]*models.Fleet)
+
+		for _, f := range attackerFleets {
+			attackerByBody[f.CurrentBodyID] = append(attackerByBody[f.CurrentBodyID], f)
+		}
+		for _, f := range defenderFleets {
+			defenderByBody[f.CurrentBodyID] = append(defenderByBody[f.CurrentBodyID], f)
+		}
+
+		for bodyID, aFleets := range attackerByBody {
+			dFleets, exists := defenderByBody[bodyID]
+			if !exists || len(dFleets) == 0 {
+				continue
+			}
+
+			attackerCombined := &models.Fleet{
+				ID:         "war-attacker-" + bodyID,
+				Name:       "攻击方联合舰队",
+				PlayerID:   war.AttackerAllianceID,
+				Ships:      make([]*models.Ship, 0),
+				TotalCargo: make(models.Resources),
+			}
+			for _, f := range aFleets {
+				attackerCombined.Ships = append(attackerCombined.Ships, f.Ships...)
+			}
+			UpdateFleetStats(attackerCombined)
+
+			defenderCombined := &models.Fleet{
+				ID:         "war-defender-" + bodyID,
+				Name:       "防御方联合舰队",
+				PlayerID:   war.DefenderAllianceID,
+				Ships:      make([]*models.Ship, 0),
+				TotalCargo: make(models.Resources),
+			}
+			for _, f := range dFleets {
+				defenderCombined.Ships = append(defenderCombined.Ships, f.Ships...)
+			}
+			UpdateFleetStats(defenderCombined)
+
+			attackerTechBonus := 1.0
+			for _, f := range aFleets {
+				p := playerMap[f.PlayerID]
+				if p != nil {
+					bonus := GetCombatBonus(p.TechTree)
+					if bonus > attackerTechBonus {
+						attackerTechBonus = bonus
+					}
+				}
+			}
+
+			defenderTechBonus := 1.0
+			for _, f := range dFleets {
+				p := playerMap[f.PlayerID]
+				if p != nil {
+					bonus := GetCombatBonus(p.TechTree)
+					if bonus > defenderTechBonus {
+						defenderTechBonus = bonus
+					}
+				}
+			}
+
+			combatResult := SimulateCombat(attackerCombined, defenderCombined, attackerTechBonus, defenderTechBonus, rng)
+
+			record := &models.CombatRecord{
+				CombatID:       fmt.Sprintf("war-combat-%d-%s", state.Turn, bodyID),
+				AttackerID:     war.AttackerAllianceID,
+				AttackerName:   attackerAlliance.Name,
+				DefenderID:     war.DefenderAllianceID,
+				DefenderName:   defenderAlliance.Name,
+				Winner:         combatResult.Winner,
+				AttackerLosses: len(combatResult.AttackerLosses),
+				DefenderLosses: len(combatResult.DefenderLosses),
+				AttackerDamage: combatResult.AttackerDamage,
+				DefenderDamage: combatResult.DefenderDamage,
+			}
+			records = append(records, record)
+
+			survivingAttackerShips := make(map[string]bool)
+			for _, s := range attackerCombined.Ships {
+				survivingAttackerShips[s.ID] = true
+			}
+			for _, f := range aFleets {
+				surviving := make([]*models.Ship, 0)
+				for _, s := range f.Ships {
+					if survivingAttackerShips[s.ID] {
+						surviving = append(surviving, s)
+					}
+				}
+				f.Ships = surviving
+				UpdateFleetStats(f)
+			}
+
+			survivingDefenderShips := make(map[string]bool)
+			for _, s := range defenderCombined.Ships {
+				survivingDefenderShips[s.ID] = true
+			}
+			for _, f := range dFleets {
+				surviving := make([]*models.Ship, 0)
+				for _, s := range f.Ships {
+					if survivingDefenderShips[s.ID] {
+						surviving = append(surviving, s)
+					}
+				}
+				f.Ships = surviving
+				UpdateFleetStats(f)
+			}
 		}
 	}
 
@@ -987,6 +1151,8 @@ func DeclareWar(state *models.GameState, initiatorID string, targetAllianceID st
 		DefenderAllianceID:  targetAllianceID,
 		DeclaredTurn:        state.Turn,
 		Status:              models.WarActive,
+		AttackerTotalAssets: calculateAllianceTotalAssets(state, initiatorAlliance),
+		DefenderTotalAssets: calculateAllianceTotalAssets(state, targetAlliance),
 	}
 
 	state.AllianceWars = append(state.AllianceWars, war)
@@ -1220,6 +1386,7 @@ func calculateReparations(state *models.GameState, loserAlliance *models.Allianc
 		if loserPlayer != nil {
 			loserName = loserPlayer.Name
 		}
+		paymentPerWinner := payment / float64(len(activeWinners))
 		for _, winnerID := range activeWinners {
 			winnerPlayer := findPlayerInState(state, winnerID)
 			winnerName := winnerID
@@ -1231,7 +1398,7 @@ func calculateReparations(state *models.GameState, loserAlliance *models.Allianc
 				PayerName: loserName,
 				PayeeID:   winnerID,
 				PayeeName: winnerName,
-				Amount:    sharePerWinner / float64(len(individualPayments)),
+				Amount:    paymentPerWinner,
 			})
 		}
 	}
