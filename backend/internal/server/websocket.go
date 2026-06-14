@@ -304,6 +304,18 @@ func (c *WebSocketConn) handlePlayerAction(msg *Message, room *Room) {
 		execErr = c.handleCreateSanctionProposal(action.Params, room)
 	case ActionSecondSanctionProposal:
 		execErr = c.handleSecondSanctionProposal(action.Params, room)
+	case ActionRecruitSpy:
+		execErr = c.handleRecruitSpy(room)
+	case ActionAssignSpyMission:
+		execErr = c.handleAssignSpyMission(action.Params, room)
+	case ActionSetCounterSpyLevel:
+		execErr = c.handleSetCounterSpyLevel(action.Params, room)
+	case ActionSellIntel:
+		execErr = c.handleSellIntel(action.Params, room)
+	case ActionBuyIntel:
+		execErr = c.handleBuyIntel(action.Params, room)
+	case ActionCancelIntelListing:
+		execErr = c.handleCancelIntelListing(action.Params, room)
 	case ActionGetGameState:
 		c.handleGameStateRequest(room)
 		return

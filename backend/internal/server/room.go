@@ -844,3 +844,57 @@ func (r *Room) SecondSanctionProposal(playerID string, proposalID string) error 
 	}
 	return r.game.SecondSanctionProposal(playerID, proposalID)
 }
+
+func (r *Room) RecruitSpy(playerID string) (*models.Spy, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.RecruitSpy(playerID)
+}
+
+func (r *Room) AssignSpyMission(spyID string, ownerPlayerID string, targetPlayerID string, missionType models.SpyMissionType, thirdPartyID string) (*models.SpyMission, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.AssignSpyMission(spyID, ownerPlayerID, targetPlayerID, missionType, thirdPartyID)
+}
+
+func (r *Room) SetCounterSpyLevel(playerID string, level models.CounterSpyLevel) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.SetCounterSpyLevel(playerID, level)
+}
+
+func (r *Room) SellIntelOnMarket(sellerID string, intelID string, price float64) (*models.IntelMarketListing, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.SellIntelOnMarket(sellerID, intelID, price)
+}
+
+func (r *Room) BuyIntelFromMarket(buyerID string, listingID string) (*models.Intelligence, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return nil, errors.New("game not started")
+	}
+	return r.game.BuyIntelFromMarket(buyerID, listingID)
+}
+
+func (r *Room) CancelIntelListing(sellerID string, listingID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.CancelIntelListing(sellerID, listingID)
+}

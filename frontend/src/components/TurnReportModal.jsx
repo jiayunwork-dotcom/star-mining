@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { RESOURCE_NAMES } from '../types/game';
+import { RESOURCE_NAMES, SPY_LEVEL_NAMES, SPY_MISSION_NAMES } from '../types/game';
 
 function formatNumber(num) {
   if (num === undefined || num === null || isNaN(num)) return '0';
@@ -382,6 +382,96 @@ function TurnReportModal({ report, onConfirm, confirmations, players }) {
                     </div>
                   ))}
                 </div>
+              )}
+            </section>
+          )}
+
+          {report.spy && (
+            <section className="report-section">
+              <h3 className="report-section-title">
+                <span className="section-icon">🕵️</span> 情报动态
+              </h3>
+
+              {report.spy.mission_results && report.spy.mission_results.length > 0 && (
+                <div style={{ marginBottom: '10px' }}>
+                  <h4 style={{ fontSize: '13px', color: '#4488FF', marginBottom: '4px' }}>间谍任务</h4>
+                  {report.spy.mission_results.map((mr, idx) => (
+                    <div key={idx} style={{ padding: '6px 8px', marginBottom: '4px', background: mr.success ? 'rgba(68,255,68,0.08)' : 'rgba(255,68,68,0.08)', borderRadius: '4px', fontSize: '13px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>
+                          {SPY_MISSION_NAMES[mr.mission_type] || mr.mission_type} → {playerMap[mr.target_player_id] ? (playerMap[mr.target_player_id].company_name || playerMap[mr.target_player_id].name) : mr.target_player_id}
+                        </span>
+                        <span className={`status-badge ${mr.success ? 'status-success' : 'status-danger'}`}>
+                          {mr.success ? '成功' : '失败'}
+                        </span>
+                      </div>
+                      {mr.captured && (
+                        <div style={{ color: '#FF4444', marginTop: '4px' }}>⚠️ 间谍被捕!</div>
+                      )}
+                      {mr.message && (
+                        <div style={{ fontSize: '12px', color: '#AAA', marginTop: '2px' }}>{mr.message}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {report.spy.counter_spy_results && report.spy.counter_spy_results.length > 0 && (
+                <div style={{ marginBottom: '10px' }}>
+                  <h4 style={{ fontSize: '13px', color: '#FFCC44', marginBottom: '4px' }}>反间谍检测</h4>
+                  {report.spy.counter_spy_results.map((cr, idx) => (
+                    <div key={idx} style={{ padding: '6px 8px', marginBottom: '4px', background: 'rgba(255,204,68,0.08)', borderRadius: '4px', fontSize: '13px' }}>
+                      {cr.detected ? (
+                        <div>
+                          检测到间谍活动! 来源: {playerMap[cr.source_player_id] ? (playerMap[cr.source_player_id].company_name || playerMap[cr.source_player_id].name) : '未知'}
+                          {cr.counter_attacked && ' | 反制: 间谍暴露值+30'}
+                        </div>
+                      ) : (
+                        <div>未检测到异常活动</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {report.spy.expired_intel && report.spy.expired_intel.length > 0 && (
+                <div style={{ marginBottom: '10px' }}>
+                  <h4 style={{ fontSize: '13px', color: '#888', marginBottom: '4px' }}>情报过期</h4>
+                  {report.spy.expired_intel.map((ei, idx) => (
+                    <div key={idx} style={{ padding: '4px 8px', marginBottom: '2px', fontSize: '12px', color: '#888' }}>
+                      📋 {ei.summary || ei.content} - 已过期
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {report.spy.level_ups && report.spy.level_ups.length > 0 && (
+                <div style={{ marginBottom: '10px' }}>
+                  <h4 style={{ fontSize: '13px', color: '#44FF44', marginBottom: '4px' }}>间谍升级</h4>
+                  {report.spy.level_ups.map((lu, idx) => (
+                    <div key={idx} style={{ padding: '4px 8px', marginBottom: '2px', fontSize: '12px', color: '#44FF44' }}>
+                      🎉 间谍升级为{SPY_LEVEL_NAMES[lu.new_level] || lu.new_level}!
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {report.spy.notifications && report.spy.notifications.length > 0 && (
+                <div>
+                  <h4 style={{ fontSize: '13px', color: '#CCC', marginBottom: '4px' }}>通知</h4>
+                  {report.spy.notifications.map((n, idx) => (
+                    <div key={idx} style={{ padding: '4px 8px', marginBottom: '2px', fontSize: '12px', color: '#CCC' }}>
+                      {n.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(!report.spy.mission_results || report.spy.mission_results.length === 0) &&
+               (!report.spy.counter_spy_results || report.spy.counter_spy_results.length === 0) &&
+               (!report.spy.level_ups || report.spy.level_ups.length === 0) &&
+               (!report.spy.notifications || report.spy.notifications.length === 0) && (
+                <div className="empty-notice">本回合无情报动态</div>
               )}
             </section>
           )}

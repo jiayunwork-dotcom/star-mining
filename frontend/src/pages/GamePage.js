@@ -5,6 +5,7 @@ import TradePanel from '../components/TradePanel.jsx';
 import FleetPanel from '../components/FleetPanel.jsx';
 import TechPanel from '../components/TechPanel.jsx';
 import DiplomacyPanel from '../components/DiplomacyPanel.jsx';
+import IntelPanel from '../components/IntelPanel.jsx';
 import EventLog from '../components/EventLog.jsx';
 import TurnControl from '../components/TurnControl.jsx';
 import TurnReportModal from '../components/TurnReportModal.jsx';
@@ -16,6 +17,7 @@ const sidebarTabs = [
   { id: 'trade', name: '贸易', component: TradePanel },
   { id: 'tech', name: '科技', component: TechPanel },
   { id: 'diplomacy', name: '外交', component: DiplomacyPanel },
+  { id: 'intel', name: '情报', component: IntelPanel },
 ];
 
 function GamePage() {

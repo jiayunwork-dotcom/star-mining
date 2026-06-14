@@ -162,6 +162,11 @@ func (gi *GameInstance) Initialize(playerIDs []string, playerNames map[string]st
 		AllianceWars:        make([]*models.AllianceWar, 0),
 		SanctionProposals:   make([]*models.SanctionProposal, 0),
 		ActiveSanctions:     make([]*models.Sanction, 0),
+		Spies:               make([]*models.Spy, 0),
+		SpyMissions:         make([]*models.SpyMission, 0),
+		Intelligences:       make([]*models.Intelligence, 0),
+		IntelMarketListings: make([]*models.IntelMarketListing, 0),
+		CounterSpySettings:  make([]*models.CounterSpySetting, 0),
 		Started:              false,
 		GameOver:             false,
 		WinnerID:             "",
@@ -305,6 +310,8 @@ func (gi *GameInstance) ProcessTurn() error {
 	_ = combatRecords
 	_ = autoCombatRecords
 
+	spySection := ProcessEspionageTurn(gi.State, gi.rng)
+
 	gi.applyInterest()
 
 	for _, player := range gi.State.Players {
@@ -327,7 +334,7 @@ func (gi *GameInstance) ProcessTurn() error {
 
 	gi.checkWinConditions()
 
-	gi.generateTurnReports(newTurnEventsStart, diplomacyChanges, warEvents, sanctionEvents)
+	gi.generateTurnReports(newTurnEventsStart, diplomacyChanges, warEvents, sanctionEvents, spySection)
 	gi.reportReady = true
 
 	return nil
@@ -1368,6 +1375,95 @@ func (gi *GameInstance) SecondSanctionProposal(seconderID string, proposalID str
 	return nil
 }
 
+func (gi *GameInstance) RecruitSpy(playerID string) (*models.Spy, error) {
+	player := gi.getPlayer(playerID)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return nil, fmt.Errorf("player is defeated or bankrupt")
+	}
+	spy, err := RecruitSpy(gi.State, playerID)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return spy, nil
+}
+
+func (gi *GameInstance) AssignSpyMission(spyID string, ownerPlayerID string, targetPlayerID string, missionType models.SpyMissionType, thirdPartyID string) (*models.SpyMission, error) {
+	player := gi.getPlayer(ownerPlayerID)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return nil, fmt.Errorf("player is defeated or bankrupt")
+	}
+	mission, err := AssignSpyMission(gi.State, spyID, ownerPlayerID, targetPlayerID, missionType, thirdPartyID)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return mission, nil
+}
+
+func (gi *GameInstance) SetCounterSpyLevel(playerID string, level models.CounterSpyLevel) error {
+	player := gi.getPlayer(playerID)
+	if player == nil {
+		return fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return fmt.Errorf("player is defeated or bankrupt")
+	}
+	err := SetCounterSpyLevel(gi.State, playerID, level)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
+func (gi *GameInstance) SellIntelOnMarket(sellerID string, intelID string, price float64) (*models.IntelMarketListing, error) {
+	player := gi.getPlayer(sellerID)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return nil, fmt.Errorf("player is defeated or bankrupt")
+	}
+	listing, err := SellIntelOnMarket(gi.State, sellerID, intelID, price)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return listing, nil
+}
+
+func (gi *GameInstance) BuyIntelFromMarket(buyerID string, listingID string) (*models.Intelligence, error) {
+	player := gi.getPlayer(buyerID)
+	if player == nil {
+		return nil, fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return nil, fmt.Errorf("player is defeated or bankrupt")
+	}
+	intel, err := BuyIntelFromMarket(gi.State, buyerID, listingID)
+	if err != nil {
+		return nil, err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return intel, nil
+}
+
+func (gi *GameInstance) CancelIntelListing(sellerID string, listingID string) error {
+	err := CancelIntelListing(gi.State, sellerID, listingID)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
 func (gi *GameInstance) PlaceBuyOrder(playerID string, exchangeID string, resource models.ResourceType, quantity float64, price float64) error {
 	player, exists := gi.GetPlayer(playerID)
 	if !exists {
@@ -1678,7 +1774,7 @@ func getResourceName(rt models.ResourceType) string {
 	return string(rt)
 }
 
-func (gi *GameInstance) generateTurnReports(newEventsStart int, diplomacyChanges []*models.DiplomacyChange, warEvents []*models.WarEvent, sanctionEvents []*models.SanctionEvent) {
+func (gi *GameInstance) generateTurnReports(newEventsStart int, diplomacyChanges []*models.DiplomacyChange, warEvents []*models.WarEvent, sanctionEvents []*models.SanctionEvent, spySection *models.SpySection) {
 	gi.turnReports = make(map[string]*models.TurnReport)
 	newRankings := gi.calculateRankings()
 	newRankMap := make(map[string]int)
@@ -1703,6 +1799,7 @@ func (gi *GameInstance) generateTurnReports(newEventsStart int, diplomacyChanges
 		report.RandomEvents = gi.generateRandomEvents(player, newEventsStart)
 		report.Rankings = gi.generateRankings(player.ID, newRankMap, newScoreMap, snapshot)
 		report.Diplomacy = gi.generateDiplomacySection(player.ID, diplomacyChanges, warEvents, sanctionEvents)
+		report.Spy = gi.generateSpySection(player.ID, spySection)
 		gi.turnReports[player.ID] = report
 	}
 }
@@ -2005,4 +2102,100 @@ func (gi *GameInstance) getBodyName(bodyID string) string {
 		}
 	}
 	return bodyID
+}
+
+func (gi *GameInstance) generateSpySection(playerID string, allSpySection *models.SpySection) *models.SpySection {
+	if allSpySection == nil {
+		return &models.SpySection{
+			MissionResults:       make([]*models.SpyResult, 0),
+			CounterSpyResults:    make([]*models.CounterSpyResult, 0),
+			ExpiredIntel:         make([]string, 0),
+			LevelUpNotifications: make([]*models.SpyNotification, 0),
+			Notifications:        make([]*models.SpyNotification, 0),
+		}
+	}
+
+	playerMissionResults := make([]*models.SpyResult, 0)
+	for _, r := range allSpySection.MissionResults {
+		mission := gi.findSpyMissionByResult(r)
+		if mission != nil && mission.OwnerPlayerID == playerID {
+			playerMissionResults = append(playerMissionResults, r)
+		}
+	}
+
+	playerCounterSpyResults := make([]*models.CounterSpyResult, 0)
+	for _, r := range allSpySection.CounterSpyResults {
+		if r.TargetPlayerID != playerID {
+			continue
+		}
+		redacted := &models.CounterSpyResult{
+			Detected:    r.Detected,
+			Identified:  r.Identified,
+			CounterDone: r.CounterDone,
+		}
+		if r.Identified {
+			redacted.SourcePlayerID = r.SourcePlayerID
+		}
+		if r.CounterDone {
+			redacted.SpyID = r.SpyID
+			redacted.ExposureAdded = r.ExposureAdded
+		}
+		redacted.RemovedSpyID = r.RemovedSpyID
+		playerCounterSpyResults = append(playerCounterSpyResults, redacted)
+	}
+
+	playerExpiredIntel := make([]string, 0)
+	playerIntelIDs := make(map[string]bool)
+	for _, intel := range gi.State.Intelligences {
+		if intel.OwnerPlayerID == playerID {
+			playerIntelIDs[intel.ID] = true
+		}
+	}
+	for _, id := range allSpySection.ExpiredIntel {
+		if playerIntelIDs[id] {
+			playerExpiredIntel = append(playerExpiredIntel, id)
+		}
+	}
+
+	playerLevelUps := make([]*models.SpyNotification, 0)
+	for _, n := range allSpySection.LevelUpNotifications {
+		spy := gi.findSpyByID(n.SpyID)
+		if spy != nil && spy.PlayerID == playerID {
+			playerLevelUps = append(playerLevelUps, n)
+		}
+	}
+
+	playerNotifications := make([]*models.SpyNotification, 0)
+	for _, n := range allSpySection.Notifications {
+		spy := gi.findSpyByID(n.SpyID)
+		if spy != nil && spy.PlayerID == playerID {
+			playerNotifications = append(playerNotifications, n)
+		}
+	}
+
+	return &models.SpySection{
+		MissionResults:       playerMissionResults,
+		CounterSpyResults:    playerCounterSpyResults,
+		ExpiredIntel:         playerExpiredIntel,
+		LevelUpNotifications: playerLevelUps,
+		Notifications:        playerNotifications,
+	}
+}
+
+func (gi *GameInstance) findSpyMissionByResult(r *models.SpyResult) *models.SpyMission {
+	for _, m := range gi.State.SpyMissions {
+		if m.SpyID == r.SpyID && m.MissionType == r.MissionType && m.TargetPlayerID == r.TargetPlayerID {
+			return m
+		}
+	}
+	return nil
+}
+
+func (gi *GameInstance) findSpyByID(spyID string) *models.Spy {
+	for _, s := range gi.State.Spies {
+		if s.ID == spyID {
+			return s
+		}
+	}
+	return nil
 }

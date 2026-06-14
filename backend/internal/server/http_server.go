@@ -77,6 +77,12 @@ func (s *HTTPServer) setupRoutes() {
 	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/buy-order", s.handler.PlaceBuyOrder).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/sell-order", s.handler.PlaceSellOrder).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/cancel-order", s.handler.CancelOrder).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/recruit-spy", s.handler.RecruitSpy).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/assign-spy-mission", s.handler.AssignSpyMission).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/set-counter-spy", s.handler.SetCounterSpyLevel).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/sell-intel", s.handler.SellIntelOnMarket).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/buy-intel", s.handler.BuyIntelFromMarket).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/cancel-intel-listing", s.handler.CancelIntelListing).Methods("POST", "OPTIONS")
 
 	s.router.HandleFunc("/ws/{roomId}/{playerId}", s.handler.WebSocketHandler)
 

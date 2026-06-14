@@ -63,6 +63,12 @@ const (
 	ActionSurrenderWar        = "surrender_war"
 	ActionCreateSanctionProposal  = "create_sanction_proposal"
 	ActionSecondSanctionProposal  = "second_sanction_proposal"
+	ActionRecruitSpy          = "recruit_spy"
+	ActionAssignSpyMission    = "assign_spy_mission"
+	ActionSetCounterSpyLevel  = "set_counter_spy_level"
+	ActionSellIntel           = "sell_intel"
+	ActionBuyIntel            = "buy_intel"
+	ActionCancelIntelListing  = "cancel_intel_listing"
 )
 
 type Message struct {

@@ -43,6 +43,12 @@ export const PLAYER_ACTIONS = {
   SURRENDER_WAR: 'surrender_war',
   CREATE_SANCTION_PROPOSAL: 'create_sanction_proposal',
   SECOND_SANCTION_PROPOSAL: 'second_sanction_proposal',
+  RECRUIT_SPY: 'recruit_spy',
+  ASSIGN_SPY_MISSION: 'assign_spy_mission',
+  SET_COUNTER_SPY_LEVEL: 'set_counter_spy_level',
+  SELL_INTEL: 'sell_intel',
+  BUY_INTEL: 'buy_intel',
+  CANCEL_INTEL_LISTING: 'cancel_intel_listing',
 };
 
 export const CELESTIAL_TYPES = {
@@ -169,4 +175,70 @@ export const SANCTION_PROPOSAL_STATUS = {
   ACTIVE: 'active',
   EXPIRED: 'expired',
   REJECTED: 'rejected',
+};
+
+export const SPY_LEVELS = {
+  JUNIOR: 'junior',
+  MIDDLE: 'middle',
+  SENIOR: 'senior',
+};
+
+export const SPY_LEVEL_NAMES = {
+  junior: '初级',
+  middle: '中级',
+  senior: '高级',
+};
+
+export const SPY_STATUS = {
+  IDLE: 'idle',
+  ON_MISSION: 'on_mission',
+  CAPTURED: 'captured',
+};
+
+export const SPY_STATUS_NAMES = {
+  idle: '待命',
+  on_mission: '执行任务中',
+  captured: '已被捕',
+};
+
+export const SPY_MISSION_TYPES = {
+  STEAL_TECH: 'steal_tech',
+  ECON_SABOTAGE: 'econ_sabotage',
+  INTEL_GATHER: 'intel_gather',
+  TURCOAT: 'turncoat',
+  DIPLO_PRESSURE: 'diplo_pressure',
+};
+
+export const SPY_MISSION_NAMES = {
+  steal_tech: '窃取科技',
+  econ_sabotage: '经济破坏',
+  intel_gather: '情报刺探',
+  turncoat: '策反',
+  diplo_pressure: '外交施压',
+};
+
+export const SPY_MISSION_DESCRIPTIONS = {
+  steal_tech: '偷取目标一项科技(初级30%/中级50%/高级70%)',
+  econ_sabotage: '销毁目标资金(初级5%/中级8%/高级12%), 成功率60%',
+  intel_gather: '获取目标详细信息(初级50%/中级70%/高级90%)',
+  turncoat: '策反目标间谍为双面间谍(仅高级, 成功率40%)',
+  diplo_pressure: '降低目标与第三方关系值-20(中级45%/高级65%)',
+};
+
+export const COUNTER_SPY_LEVELS = {
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+};
+
+export const COUNTER_SPY_NAMES = {
+  low: '低(20%检测/100¢)',
+  medium: '中(40%检测+识别/250¢)',
+  high: '高(60%检测+识别+反制/500¢)',
+};
+
+export const COUNTER_SPY_COSTS = {
+  low: 100,
+  medium: 250,
+  high: 500,
 };

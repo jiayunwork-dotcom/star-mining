@@ -48,6 +48,11 @@ const initialState = {
   allianceWars: [],
   sanctionProposals: [],
   activeSanctions: [],
+  spies: [],
+  spyMissions: [],
+  intelligences: [],
+  intelMarketListings: [],
+  counterSpySettings: [],
   gameOver: false,
   winnerId: '',
   maxTurns: 60,
@@ -229,6 +234,11 @@ function parseGameState(data) {
   if (gameData.alliance_wars !== undefined) result.allianceWars = gameData.alliance_wars;
   if (gameData.sanction_proposals !== undefined) result.sanctionProposals = gameData.sanction_proposals;
   if (gameData.active_sanctions !== undefined) result.activeSanctions = gameData.active_sanctions;
+  if (gameData.spies !== undefined) result.spies = gameData.spies;
+  if (gameData.spy_missions !== undefined) result.spyMissions = gameData.spy_missions;
+  if (gameData.intelligences !== undefined) result.intelligences = gameData.intelligences;
+  if (gameData.intel_market_listings !== undefined) result.intelMarketListings = gameData.intel_market_listings;
+  if (gameData.counter_spy_settings !== undefined) result.counterSpySettings = gameData.counter_spy_settings;
 
   if (data.players && Array.isArray(data.players)) {
     result.players = data.players;
@@ -637,6 +647,38 @@ export function GameProvider({ children }) {
     ws.sendPlayerAction(PLAYER_ACTIONS.SECOND_SANCTION_PROPOSAL, { proposal_id: proposalId });
   }, []);
 
+  const recruitSpy = useCallback(() => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.RECRUIT_SPY, {});
+  }, []);
+
+  const assignSpyMission = useCallback((spyId, targetPlayerId, missionType, thirdPartyId) => {
+    const params = {
+      spy_id: spyId,
+      target_player_id: targetPlayerId,
+      mission_type: missionType,
+    };
+    if (thirdPartyId) {
+      params.third_party_id = thirdPartyId;
+    }
+    ws.sendPlayerAction(PLAYER_ACTIONS.ASSIGN_SPY_MISSION, params);
+  }, []);
+
+  const setCounterSpyLevel = useCallback((level) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.SET_COUNTER_SPY_LEVEL, { level });
+  }, []);
+
+  const sellIntelOnMarket = useCallback((intelId, price) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.SELL_INTEL, { intel_id: intelId, price });
+  }, []);
+
+  const buyIntelFromMarket = useCallback((listingId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.BUY_INTEL, { listing_id: listingId });
+  }, []);
+
+  const cancelIntelListing = useCallback((listingId) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.CANCEL_INTEL_LISTING, { listing_id: listingId });
+  }, []);
+
   const value = {
     state,
     connect,
@@ -678,6 +720,12 @@ export function GameProvider({ children }) {
     surrenderWar,
     createSanctionProposal,
     secondSanctionProposal,
+    recruitSpy,
+    assignSpyMission,
+    setCounterSpyLevel,
+    sellIntelOnMarket,
+    buyIntelFromMarket,
+    cancelIntelListing,
     getAllCelestials: () => getAllCelestials(state.gameMap),
   };
 

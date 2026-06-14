@@ -573,6 +573,137 @@ type DiplomacySection struct {
 	SanctionEvents []*SanctionEvent  `json:"sanction_events"`
 }
 
+type SpyLevel string
+
+const (
+	SpyLevelJunior  SpyLevel = "junior"
+	SpyLevelMiddle  SpyLevel = "middle"
+	SpyLevelSenior  SpyLevel = "senior"
+)
+
+type SpyStatus string
+
+const (
+	SpyStatusIdle      SpyStatus = "idle"
+	SpyStatusOnMission SpyStatus = "on_mission"
+	SpyStatusCaptured  SpyStatus = "captured"
+)
+
+type SpyMissionType string
+
+const (
+	MissionStealTech    SpyMissionType = "steal_tech"
+	MissionEconSabotage SpyMissionType = "econ_sabotage"
+	MissionIntelGather  SpyMissionType = "intel_gather"
+	MissionTurncoat     SpyMissionType = "turncoat"
+	MissionDiploPressure SpyMissionType = "diplo_pressure"
+)
+
+type CounterSpyLevel string
+
+const (
+	CounterSpyLow    CounterSpyLevel = "low"
+	CounterSpyMedium CounterSpyLevel = "medium"
+	CounterSpyHigh   CounterSpyLevel = "high"
+)
+
+type Spy struct {
+	ID               string        `json:"id"`
+	PlayerID         string        `json:"player_id"`
+	Level            SpyLevel      `json:"level"`
+	Exposure         int           `json:"exposure"`
+	Status           SpyStatus     `json:"status"`
+	CompletedMissions int          `json:"completed_missions"`
+	TurnRecruited    int           `json:"turn_recruited"`
+	IsDoubleAgent    bool          `json:"is_double_agent"`
+	DoubleAgentFor   string        `json:"double_agent_for,omitempty"`
+}
+
+type SpyMission struct {
+	ID            string         `json:"id"`
+	SpyID         string         `json:"spy_id"`
+	OwnerPlayerID string         `json:"owner_player_id"`
+	TargetPlayerID string        `json:"target_player_id"`
+	ThirdPartyID  string         `json:"third_party_id,omitempty"`
+	MissionType   SpyMissionType `json:"mission_type"`
+	TurnSubmitted int            `json:"turn_submitted"`
+	Success       bool           `json:"success"`
+	Result        string         `json:"result,omitempty"`
+	Resolved      bool           `json:"resolved"`
+}
+
+type Intelligence struct {
+	ID              string   `json:"id"`
+	OwnerPlayerID   string   `json:"owner_player_id"`
+	SourcePlayerID  string   `json:"source_player_id"`
+	SourceSpyID     string   `json:"source_spy_id,omitempty"`
+	Content         string   `json:"content"`
+	Summary         string   `json:"summary"`
+	TurnAcquired    int      `json:"turn_acquired"`
+	ExpiryTurn      int      `json:"expiry_turn"`
+	IntelType       string   `json:"intel_type"`
+	Expired         bool     `json:"expired"`
+	TargetCredits   float64  `json:"target_credits,omitempty"`
+	TargetFleetCount int     `json:"target_fleet_count,omitempty"`
+	TargetTechs     []string `json:"target_techs,omitempty"`
+	TargetAlliances []string `json:"target_alliances,omitempty"`
+}
+
+type IntelMarketListing struct {
+	ID            string  `json:"id"`
+	SellerID      string  `json:"seller_id"`
+	IntelID       string  `json:"intel_id"`
+	Price         float64 `json:"price"`
+	BasePrice     float64 `json:"base_price"`
+	CreatedTurn   int     `json:"created_turn"`
+	RemainingTurns int    `json:"remaining_turns"`
+	Active        bool    `json:"active"`
+}
+
+type SpyResult struct {
+	SpyID              string  `json:"spy_id"`
+	MissionType        SpyMissionType `json:"mission_type"`
+	TargetPlayerID     string  `json:"target_player_id"`
+	Success            bool    `json:"success"`
+	Captured           bool    `json:"captured"`
+	ExposureGain       int     `json:"exposure_gain"`
+	Result             string  `json:"result"`
+	StolenTech         string  `json:"stolen_tech,omitempty"`
+	DamageAmount       float64 `json:"damage_amount,omitempty"`
+	IntelGathered      bool    `json:"intel_gathered,omitempty"`
+	TurncoatSpyID      string  `json:"turncoat_spy_id,omitempty"`
+	DiploTarget        string  `json:"diplo_target,omitempty"`
+	DiploThirdParty    string  `json:"diplo_third_party,omitempty"`
+	IsDoubleAgentFail  bool    `json:"is_double_agent_fail,omitempty"`
+}
+
+type CounterSpyResult struct {
+	Detected       bool   `json:"detected"`
+	Identified     bool   `json:"identified"`
+	CounterDone    bool   `json:"counter_done"`
+	TargetPlayerID string `json:"target_player_id"`
+	SourcePlayerID string `json:"source_player_id,omitempty"`
+	SpyID          string `json:"spy_id,omitempty"`
+	ExposureAdded  int    `json:"exposure_added,omitempty"`
+	RemovedSpyID   string `json:"removed_spy_id,omitempty"`
+}
+
+type SpyNotification struct {
+	Type    string  `json:"type"`
+	Message string  `json:"message"`
+	Turn    int     `json:"turn"`
+	SpyID   string  `json:"spy_id,omitempty"`
+	Details string  `json:"details,omitempty"`
+}
+
+type SpySection struct {
+	MissionResults     []*SpyResult      `json:"mission_results"`
+	CounterSpyResults  []*CounterSpyResult `json:"counter_spy_results"`
+	ExpiredIntel       []string          `json:"expired_intel"`
+	LevelUpNotifications []*SpyNotification `json:"level_up_notifications"`
+	Notifications      []*SpyNotification `json:"notifications"`
+}
+
 type PlayerCooldown struct {
 	PlayerID      string `json:"player_id"`
 	CooldownTurns int    `json:"cooldown_turns"`
@@ -590,7 +721,13 @@ type TurnReport struct {
 	RandomEvents      []*RandomEventRecord   `json:"random_events"`
 	Rankings          []*RankingChangeEntry  `json:"rankings"`
 	Diplomacy         *DiplomacySection      `json:"diplomacy"`
+	Spy               *SpySection            `json:"spy"`
 	GeneratedAt       time.Time              `json:"generated_at"`
+}
+
+type CounterSpySetting struct {
+	PlayerID string         `json:"player_id"`
+	Level    CounterSpyLevel `json:"level"`
 }
 
 type GameState struct {
@@ -611,6 +748,11 @@ type GameState struct {
 	AllianceWars        []*AllianceWar         `json:"alliance_wars"`
 	SanctionProposals   []*SanctionProposal    `json:"sanction_proposals"`
 	ActiveSanctions     []*Sanction            `json:"active_sanctions"`
+	Spies               []*Spy                 `json:"spies"`
+	SpyMissions         []*SpyMission          `json:"spy_missions"`
+	Intelligences       []*Intelligence        `json:"intelligences"`
+	IntelMarketListings []*IntelMarketListing  `json:"intel_market_listings"`
+	CounterSpySettings  []*CounterSpySetting   `json:"counter_spy_settings"`
 	Started             bool                 `json:"started"`
 	GameOver            bool                 `json:"game_over"`
 	WinnerID            string               `json:"winner_id"`

@@ -1212,3 +1212,231 @@ func (h *APIHandler) UpgradeRefinery(w http.ResponseWriter, r *http.Request) {
 
 	sendJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
+
+type RecruitSpyRequest struct{}
+
+type AssignSpyMissionRequest struct {
+	SpyID          string `json:"spy_id"`
+	TargetPlayerID string `json:"target_player_id"`
+	MissionType    string `json:"mission_type"`
+	ThirdPartyID   string `json:"third_party_id,omitempty"`
+}
+
+type SetCounterSpyLevelRequest struct {
+	Level string `json:"level"`
+}
+
+type SellIntelRequest struct {
+	IntelID string  `json:"intel_id"`
+	Price   float64 `json:"price"`
+}
+
+type BuyIntelRequest struct {
+	ListingID string `json:"listing_id"`
+}
+
+type CancelIntelListingRequest struct {
+	ListingID string `json:"listing_id"`
+}
+
+func (h *APIHandler) RecruitSpy(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["roomId"]
+	playerID := vars["playerId"]
+
+	room, exists := h.roomManager.GetRoom(roomID)
+	if !exists {
+		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	spy, err := room.RecruitSpy(playerID)
+	if err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	gameState := room.GetGameState()
+	msg, _ := NewMessage(MsgTypeGameState, gameState)
+	room.Broadcast(msg)
+
+	sendJSON(w, http.StatusOK, spy)
+}
+
+func (h *APIHandler) AssignSpyMission(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["roomId"]
+	playerID := vars["playerId"]
+
+	var req AssignSpyMissionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	room, exists := h.roomManager.GetRoom(roomID)
+	if !exists {
+		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	mission, err := room.AssignSpyMission(req.SpyID, playerID, req.TargetPlayerID, models.SpyMissionType(req.MissionType), req.ThirdPartyID)
+	if err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	gameState := room.GetGameState()
+	msg, _ := NewMessage(MsgTypeGameState, gameState)
+	room.Broadcast(msg)
+
+	sendJSON(w, http.StatusOK, mission)
+}
+
+func (h *APIHandler) SetCounterSpyLevel(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["roomId"]
+	playerID := vars["playerId"]
+
+	var req SetCounterSpyLevelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	room, exists := h.roomManager.GetRoom(roomID)
+	if !exists {
+		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := room.SetCounterSpyLevel(playerID, models.CounterSpyLevel(req.Level)); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	gameState := room.GetGameState()
+	msg, _ := NewMessage(MsgTypeGameState, gameState)
+	room.Broadcast(msg)
+
+	sendJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *APIHandler) SellIntelOnMarket(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["roomId"]
+	playerID := vars["playerId"]
+
+	var req SellIntelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	room, exists := h.roomManager.GetRoom(roomID)
+	if !exists {
+		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	listing, err := room.SellIntelOnMarket(playerID, req.IntelID, req.Price)
+	if err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	gameState := room.GetGameState()
+	msg, _ := NewMessage(MsgTypeGameState, gameState)
+	room.Broadcast(msg)
+
+	sendJSON(w, http.StatusOK, listing)
+}
+
+func (h *APIHandler) BuyIntelFromMarket(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["roomId"]
+	playerID := vars["playerId"]
+
+	var req BuyIntelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	room, exists := h.roomManager.GetRoom(roomID)
+	if !exists {
+		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	intel, err := room.BuyIntelFromMarket(playerID, req.ListingID)
+	if err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	gameState := room.GetGameState()
+	msg, _ := NewMessage(MsgTypeGameState, gameState)
+	room.Broadcast(msg)
+
+	sendJSON(w, http.StatusOK, intel)
+}
+
+func (h *APIHandler) CancelIntelListing(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["roomId"]
+	playerID := vars["playerId"]
+
+	var req CancelIntelListingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	room, exists := h.roomManager.GetRoom(roomID)
+	if !exists {
+		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := room.CancelIntelListing(playerID, req.ListingID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	gameState := room.GetGameState()
+	msg, _ := NewMessage(MsgTypeGameState, gameState)
+	room.Broadcast(msg)
+
+	sendJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
