@@ -679,6 +679,10 @@ export function GameProvider({ children }) {
     ws.sendPlayerAction(PLAYER_ACTIONS.CANCEL_INTEL_LISTING, { listing_id: listingId });
   }, []);
 
+  const chooseSpySpec = useCallback((spyId, specialization) => {
+    ws.sendPlayerAction(PLAYER_ACTIONS.CHOOSE_SPY_SPEC, { spy_id: spyId, specialization });
+  }, []);
+
   const value = {
     state,
     connect,
@@ -726,6 +730,7 @@ export function GameProvider({ children }) {
     sellIntelOnMarket,
     buyIntelFromMarket,
     cancelIntelListing,
+    chooseSpySpec,
     getAllCelestials: () => getAllCelestials(state.gameMap),
   };
 

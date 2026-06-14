@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { RESOURCE_NAMES, SPY_LEVEL_NAMES, SPY_MISSION_NAMES } from '../types/game';
+import { RESOURCE_NAMES, SPY_LEVEL_NAMES, SPY_MISSION_NAMES, SPY_SPEC_NAMES, SPY_SPEC_COLORS } from '../types/game';
 
 function formatNumber(num) {
   if (num === undefined || num === null || isNaN(num)) return '0';
@@ -406,7 +406,9 @@ function TurnReportModal({ report, onConfirm, confirmations, players }) {
                         </span>
                       </div>
                       {mr.captured && (
-                        <div style={{ color: '#FF4444', marginTop: '4px' }}>⚠️ 间谍被捕!</div>
+                        <div style={{ color: '#FF4444', marginTop: '4px' }}>
+                          ⚠️ 间谍被捕!{mr.captured_by_aggression && <span style={{ color: '#FF8844', marginLeft: '4px' }}>(因激进行动暴露)</span>}
+                        </div>
                       )}
                       {mr.message && (
                         <div style={{ fontSize: '12px', color: '#AAA', marginTop: '2px' }}>{mr.message}</div>
@@ -425,6 +427,11 @@ function TurnReportModal({ report, onConfirm, confirmations, players }) {
                         <div>
                           检测到间谍活动! 来源: {playerMap[cr.source_player_id] ? (playerMap[cr.source_player_id].company_name || playerMap[cr.source_player_id].name) : '未知'}
                           {cr.counter_attacked && ' | 反制: 间谍暴露值+30'}
+                          {cr.spy_specialization && (
+                            <span style={{ marginLeft: '8px', color: SPY_SPEC_COLORS[cr.spy_specialization] || '#AAA' }}>
+                              专精: {SPY_SPEC_NAMES[cr.spy_specialization] || cr.spy_specialization}
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <div>未检测到异常活动</div>

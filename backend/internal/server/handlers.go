@@ -1239,6 +1239,11 @@ type CancelIntelListingRequest struct {
 	ListingID string `json:"listing_id"`
 }
 
+type ChooseSpySpecRequest struct {
+	SpyID          string `json:"spy_id"`
+	Specialization string `json:"specialization"`
+}
+
 func (h *APIHandler) RecruitSpy(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	roomID := vars["roomId"]
@@ -1430,6 +1435,40 @@ func (h *APIHandler) CancelIntelListing(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := room.CancelIntelListing(playerID, req.ListingID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	gameState := room.GetGameState()
+	msg, _ := NewMessage(MsgTypeGameState, gameState)
+	room.Broadcast(msg)
+
+	sendJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *APIHandler) ChooseSpySpec(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	roomID := vars["roomId"]
+	playerID := vars["playerId"]
+
+	var req ChooseSpySpecRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	room, exists := h.roomManager.GetRoom(roomID)
+	if !exists {
+		sendError(w, http.StatusNotFound, "room not found")
+		return
+	}
+
+	if err := validatePlayerInRoom(room, playerID); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := room.ChooseSpySpec(playerID, req.SpyID, models.SpySpecialization(req.Specialization)); err != nil {
 		sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}

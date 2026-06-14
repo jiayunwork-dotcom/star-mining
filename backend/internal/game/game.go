@@ -1464,6 +1464,22 @@ func (gi *GameInstance) CancelIntelListing(sellerID string, listingID string) er
 	return nil
 }
 
+func (gi *GameInstance) ChooseSpySpecialization(playerID string, spyID string, spec models.SpySpecialization) error {
+	player := gi.getPlayer(playerID)
+	if player == nil {
+		return fmt.Errorf("player not found")
+	}
+	if player.IsDefeated || player.IsBankrupt {
+		return fmt.Errorf("player is defeated or bankrupt")
+	}
+	err := ChooseSpySpecialization(gi.State, spyID, playerID, spec)
+	if err != nil {
+		return err
+	}
+	gi.State.UpdatedAt = time.Now()
+	return nil
+}
+
 func (gi *GameInstance) PlaceBuyOrder(playerID string, exchangeID string, resource models.ResourceType, quantity float64, price float64) error {
 	player, exists := gi.GetPlayer(playerID)
 	if !exists {
@@ -2139,6 +2155,7 @@ func (gi *GameInstance) generateSpySection(playerID string, allSpySection *model
 		if r.CounterDone {
 			redacted.SpyID = r.SpyID
 			redacted.ExposureAdded = r.ExposureAdded
+			redacted.SpySpecialization = r.SpySpecialization
 		}
 		redacted.RemovedSpyID = r.RemovedSpyID
 		playerCounterSpyResults = append(playerCounterSpyResults, redacted)

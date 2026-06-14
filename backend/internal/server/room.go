@@ -898,3 +898,12 @@ func (r *Room) CancelIntelListing(sellerID string, listingID string) error {
 	}
 	return r.game.CancelIntelListing(sellerID, listingID)
 }
+
+func (r *Room) ChooseSpySpec(playerID string, spyID string, spec models.SpySpecialization) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.game == nil {
+		return errors.New("game not started")
+	}
+	return r.game.ChooseSpySpecialization(playerID, spyID, spec)
+}

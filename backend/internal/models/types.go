@@ -607,6 +607,14 @@ const (
 	CounterSpyHigh   CounterSpyLevel = "high"
 )
 
+type SpySpecialization string
+
+const (
+	SpySpecInfiltration SpySpecialization = "infiltration"
+	SpySpecDestruction  SpySpecialization = "destruction"
+	SpySpecShadow       SpySpecialization = "shadow"
+)
+
 type Spy struct {
 	ID               string        `json:"id"`
 	PlayerID         string        `json:"player_id"`
@@ -615,8 +623,10 @@ type Spy struct {
 	Status           SpyStatus     `json:"status"`
 	CompletedMissions int          `json:"completed_missions"`
 	TurnRecruited    int           `json:"turn_recruited"`
-	IsDoubleAgent    bool          `json:"is_double_agent"`
-	DoubleAgentFor   string        `json:"double_agent_for,omitempty"`
+	IsDoubleAgent    bool              `json:"is_double_agent"`
+	DoubleAgentFor   string            `json:"double_agent_for,omitempty"`
+	Specialization   SpySpecialization `json:"specialization,omitempty"`
+	SpecEligible     bool              `json:"spec_eligible"`
 }
 
 type SpyMission struct {
@@ -675,17 +685,19 @@ type SpyResult struct {
 	DiploTarget        string  `json:"diplo_target,omitempty"`
 	DiploThirdParty    string  `json:"diplo_third_party,omitempty"`
 	IsDoubleAgentFail  bool    `json:"is_double_agent_fail,omitempty"`
+	CapturedByAggression bool   `json:"captured_by_aggression,omitempty"`
 }
 
 type CounterSpyResult struct {
-	Detected       bool   `json:"detected"`
-	Identified     bool   `json:"identified"`
-	CounterDone    bool   `json:"counter_done"`
-	TargetPlayerID string `json:"target_player_id"`
-	SourcePlayerID string `json:"source_player_id,omitempty"`
-	SpyID          string `json:"spy_id,omitempty"`
-	ExposureAdded  int    `json:"exposure_added,omitempty"`
-	RemovedSpyID   string `json:"removed_spy_id,omitempty"`
+	Detected          bool             `json:"detected"`
+	Identified        bool             `json:"identified"`
+	CounterDone       bool             `json:"counter_done"`
+	TargetPlayerID    string           `json:"target_player_id"`
+	SourcePlayerID    string           `json:"source_player_id,omitempty"`
+	SpyID             string           `json:"spy_id,omitempty"`
+	ExposureAdded     int              `json:"exposure_added,omitempty"`
+	RemovedSpyID      string           `json:"removed_spy_id,omitempty"`
+	SpySpecialization SpySpecialization `json:"spy_specialization,omitempty"`
 }
 
 type SpyNotification struct {

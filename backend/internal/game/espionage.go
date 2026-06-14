@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strings"
 
 	"star-mining/internal/models"
 )
@@ -25,6 +26,20 @@ const (
 	IntelMarketBasePrice     = 500.0
 	MaxSpyAttacksPerTarget   = 2
 	WarSpySuccessBonus       = 0.15
+)
+
+const (
+	SpySpecRequiredMissions           = 8
+	SpySpecInfiltrationBonusRate      = 0.20
+	SpySpecInfiltrationPenaltyRate    = 0.15
+	SpySpecInfiltrationExpMin         = 7
+	SpySpecInfiltrationExpMax         = 15
+	SpySpecDestructionExpExtra        = 10
+	SpySpecShadowIdleDecay            = 15
+	SpySpecShadowCaptureThreshold     = 95
+	SpySpecShadowPenaltyRate          = 0.10
+	SpySpecInfiltrationTurncoatRate   = 0.55
+	SpySpecShadowCounterSpyReduction  = 0.5
 )
 
 func getPlayerSpies(state *models.GameState, playerID string) []*models.Spy {
@@ -81,6 +96,41 @@ func RecruitSpy(state *models.GameState, playerID string) (*models.Spy, error) {
 	return spy, nil
 }
 
+func ChooseSpySpecialization(state *models.GameState, spyID string, playerID string, spec models.SpySpecialization) error {
+	var spy *models.Spy
+	for _, s := range state.Spies {
+		if s.ID == spyID {
+			spy = s
+			break
+		}
+	}
+	if spy == nil {
+		return fmt.Errorf("间谍不存在")
+	}
+	if spy.PlayerID != playerID {
+		return fmt.Errorf("这不是你的间谍")
+	}
+	if spy.Level != models.SpyLevelSenior {
+		return fmt.Errorf("只有高级间谍可以选择专精")
+	}
+	if spy.CompletedMissions < SpySpecRequiredMissions {
+		return fmt.Errorf("需要完成%d次任务才能选择专精(当前%d次)", SpySpecRequiredMissions, spy.CompletedMissions)
+	}
+	if spy.Specialization != "" {
+		return fmt.Errorf("间谍已选择专精路线，不可更改")
+	}
+	if spec == models.SpySpecDestruction {
+		if IsPlayerSanctioned(state, playerID) {
+			return fmt.Errorf("被制裁状态下不能选择破坏专精")
+		}
+	}
+	if spec != models.SpySpecInfiltration && spec != models.SpySpecDestruction && spec != models.SpySpecShadow {
+		return fmt.Errorf("无效的专精路线")
+	}
+	spy.Specialization = spec
+	return nil
+}
+
 func AssignSpyMission(state *models.GameState, spyID string, ownerPlayerID string, targetPlayerID string, missionType models.SpyMissionType, thirdPartyID string) (*models.SpyMission, error) {
 	var spy *models.Spy
 	for _, s := range state.Spies {
@@ -112,6 +162,18 @@ func AssignSpyMission(state *models.GameState, spyID string, ownerPlayerID strin
 
 	if missionType == models.MissionTurncoat && spy.Level != models.SpyLevelSenior {
 		return nil, fmt.Errorf("策反任务只有高级间谍能执行")
+	}
+	if missionType == models.MissionTurncoat {
+		var selectedSpy *models.Spy
+		for _, s := range state.Spies {
+			if s.ID == spyID {
+				selectedSpy = s
+				break
+			}
+		}
+		if selectedSpy != nil && selectedSpy.Specialization == models.SpySpecDestruction {
+			return nil, fmt.Errorf("破坏专精间谍不能执行策反任务")
+		}
 	}
 	if missionType == models.MissionDiploPressure && spy.Level == models.SpyLevelJunior {
 		return nil, fmt.Errorf("初级间谍不能执行外交施压任务")
@@ -210,6 +272,24 @@ func getMissionSuccessRate(spy *models.Spy, missionType models.SpyMissionType, s
 		baseRate += WarSpySuccessBonus
 	}
 
+	if spy.Specialization != "" {
+		switch spy.Specialization {
+		case models.SpySpecInfiltration:
+			if missionType == models.MissionStealTech || missionType == models.MissionIntelGather {
+				baseRate += SpySpecInfiltrationBonusRate
+			}
+			if missionType == models.MissionEconSabotage || missionType == models.MissionDiploPressure {
+				baseRate -= SpySpecInfiltrationPenaltyRate
+			}
+			if missionType == models.MissionTurncoat {
+				baseRate = SpySpecInfiltrationTurncoatRate
+			}
+		case models.SpySpecDestruction:
+		case models.SpySpecShadow:
+			baseRate -= SpySpecShadowPenaltyRate
+		}
+	}
+
 	if baseRate > 1.0 {
 		baseRate = 1.0
 	}
@@ -255,15 +335,32 @@ func ProcessEspionageTurn(state *models.GameState, rng *rand.Rand) *models.SpySe
 		section.MissionResults = append(section.MissionResults, result)
 
 		exposureGain := SpyExposureGainMin + rng.Intn(SpyExposureGainMax-SpyExposureGainMin+1)
+		if spy.Specialization == models.SpySpecInfiltration {
+			exposureGain = SpySpecInfiltrationExpMin + rng.Intn(SpySpecInfiltrationExpMax-SpySpecInfiltrationExpMin+1)
+		}
+		if spy.Specialization == models.SpySpecDestruction {
+			exposureGain += SpySpecDestructionExpExtra
+		}
 		spy.Exposure += exposureGain
 		result.ExposureGain = exposureGain
 
-		if spy.Exposure >= SpyExposureThreshold && rng.Float64() < SpyCaptureChance {
+		captureThreshold := SpyExposureThreshold
+		if spy.Specialization == models.SpySpecShadow {
+			captureThreshold = SpySpecShadowCaptureThreshold
+		}
+		if spy.Exposure >= captureThreshold && rng.Float64() < SpyCaptureChance {
 			spy.Status = models.SpyStatusCaptured
 			result.Captured = true
+			if spy.Specialization == models.SpySpecDestruction {
+				result.CapturedByAggression = true
+			}
+			msgSuffix := ""
+			if result.CapturedByAggression {
+				msgSuffix = "(因激进行动暴露)"
+			}
 			section.Notifications = append(section.Notifications, &models.SpyNotification{
 				Type:    "spy_captured",
-				Message: fmt.Sprintf("间谍%s在执行%s任务时被捕，已移除", spy.ID[:12], string(mission.MissionType)),
+				Message: fmt.Sprintf("间谍%s在执行%s任务时被捕%s，已移除", spy.ID[:12], string(mission.MissionType), msgSuffix),
 				Turn:    state.Turn,
 				SpyID:   spy.ID,
 			})
@@ -283,6 +380,17 @@ func ProcessEspionageTurn(state *models.GameState, rng *rand.Rand) *models.SpySe
 						SpyID:   spy.ID,
 					})
 				}
+				if spy.Level == models.SpyLevelSenior && spy.CompletedMissions >= SpySpecRequiredMissions && spy.Specialization == "" {
+					spy.SpecEligible = true
+				}
+				if spy.SpecEligible {
+					section.Notifications = append(section.Notifications, &models.SpyNotification{
+						Type:    "spy_spec_eligible",
+						Message: fmt.Sprintf("间谍%s已完成%d次任务，可选择专精路线", spy.ID[:12], SpySpecRequiredMissions),
+						Turn:    state.Turn,
+						SpyID:   spy.ID,
+					})
+				}
 			}
 		}
 
@@ -295,7 +403,11 @@ func ProcessEspionageTurn(state *models.GameState, rng *rand.Rand) *models.SpySe
 
 	for _, spy := range state.Spies {
 		if spy.Status == models.SpyStatusIdle {
-			spy.Exposure -= SpyExposureIdleDecay
+			decay := SpyExposureIdleDecay
+			if spy.Specialization == models.SpySpecShadow {
+				decay = SpySpecShadowIdleDecay
+			}
+			spy.Exposure -= decay
 			if spy.Exposure < 0 {
 				spy.Exposure = 0
 			}
@@ -427,6 +539,10 @@ func resolveEconSabotage(state *models.GameState, spy *models.Spy, mission *mode
 		damageRate = 0.12
 	}
 
+	if spy.Specialization == models.SpySpecDestruction {
+		damageRate *= 2
+	}
+
 	damage := target.Credits * damageRate
 	target.Credits -= damage
 	if target.Credits < 0 {
@@ -482,6 +598,11 @@ func resolveIntelGather(state *models.GameState, spy *models.Spy, mission *model
 }
 
 func resolveTurncoat(state *models.GameState, spy *models.Spy, mission *models.SpyMission, result *models.SpyResult, target *models.Player, rng *rand.Rand) {
+	if spy.Specialization == models.SpySpecDestruction {
+		result.Result = "破坏专精间谍不能执行策反任务(策反需要耐心，不能鲁莽)"
+		return
+	}
+
 	targetSpies := getPlayerSpies(state, mission.TargetPlayerID)
 	if len(targetSpies) == 0 {
 		result.Result = "目标没有间谍可策反"
@@ -489,8 +610,13 @@ func resolveTurncoat(state *models.GameState, spy *models.Spy, mission *models.S
 	}
 
 	targetSpy := targetSpies[rng.Intn(len(targetSpies))]
+
+	if spy.Specialization == models.SpySpecShadow {
+		targetSpy.DoubleAgentFor = mission.OwnerPlayerID + ":shadow_harder_detect"
+	} else {
+		targetSpy.DoubleAgentFor = mission.OwnerPlayerID
+	}
 	targetSpy.IsDoubleAgent = true
-	targetSpy.DoubleAgentFor = mission.OwnerPlayerID
 
 	result.Success = true
 	result.TurncoatSpyID = targetSpy.ID
@@ -503,7 +629,11 @@ func resolveDiploPressure(state *models.GameState, spy *models.Spy, mission *mod
 		return
 	}
 
-	change := ModifyDiplomacyValue(state, mission.TargetPlayerID, mission.ThirdPartyID, -20.0, "间谍外交施压")
+	pressureAmount := -20.0
+	if spy.Specialization == models.SpySpecDestruction {
+		pressureAmount = -35.0
+	}
+	change := ModifyDiplomacyValue(state, mission.TargetPlayerID, mission.ThirdPartyID, pressureAmount, "间谍外交施压")
 	if change == nil {
 		result.Result = "外交施压失败(双方处于交战状态，关系值修改被忽略)"
 		return
@@ -520,6 +650,9 @@ func checkSpyLevelUp(spy *models.Spy) {
 		spy.Level = models.SpyLevelMiddle
 	} else if spy.Level == models.SpyLevelMiddle && spy.CompletedMissions >= SpyLevelUpJuniorToMiddle+SpyLevelUpMiddleToSenior {
 		spy.Level = models.SpyLevelSenior
+	}
+	if spy.Level == models.SpyLevelSenior && spy.CompletedMissions >= SpySpecRequiredMissions && spy.Specialization == "" {
+		spy.SpecEligible = true
 	}
 }
 
@@ -705,12 +838,21 @@ func processCounterEspionage(state *models.GameState, section *models.SpySection
 			if spy != nil {
 				csResult.SpyID = spy.ID
 
+				if canCounter && spy.Specialization != "" {
+					csResult.SpySpecialization = spy.Specialization
+				}
+
 				if canCounter {
 					spy.Exposure += 30
 					csResult.ExposureAdded = 30
 				}
 
 				if spy.IsDoubleAgent && spy.DoubleAgentFor != "" && spy.DoubleAgentFor != player.ID {
+					if strings.Contains(spy.DoubleAgentFor, ":shadow_harder_detect") {
+						if rng.Float64() < SpySpecShadowCounterSpyReduction {
+							continue
+						}
+					}
 					removeSpy(state, spy.ID)
 					csResult.RemovedSpyID = spy.ID
 					section.Notifications = append(section.Notifications, &models.SpyNotification{

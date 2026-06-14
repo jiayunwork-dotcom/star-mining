@@ -69,6 +69,7 @@ const (
 	ActionSellIntel           = "sell_intel"
 	ActionBuyIntel            = "buy_intel"
 	ActionCancelIntelListing  = "cancel_intel_listing"
+	ActionChooseSpySpec       = "choose_spy_spec"
 )
 
 type Message struct {

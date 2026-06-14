@@ -49,6 +49,7 @@ export const PLAYER_ACTIONS = {
   SELL_INTEL: 'sell_intel',
   BUY_INTEL: 'buy_intel',
   CANCEL_INTEL_LISTING: 'cancel_intel_listing',
+  CHOOSE_SPY_SPEC: 'choose_spy_spec',
 };
 
 export const CELESTIAL_TYPES = {
@@ -242,3 +243,29 @@ export const COUNTER_SPY_COSTS = {
   medium: 250,
   high: 500,
 };
+
+export const SPY_SPECIALIZATIONS = {
+  INFILTRATION: 'infiltration',
+  DESTRUCTION: 'destruction',
+  SHADOW: 'shadow',
+};
+
+export const SPY_SPEC_NAMES = {
+  infiltration: '渗透',
+  destruction: '破坏',
+  shadow: '影子',
+};
+
+export const SPY_SPEC_DESCRIPTIONS = {
+  infiltration: '窃取科技/情报刺探+20%成功率，经济破坏/外交施压-15%，暴露增长减半',
+  destruction: '经济破坏伤害翻倍，外交施压-35关系值，每次任务暴露+10',
+  shadow: '闲置暴露-15/回合，被捕阈值提升至95，所有任务成功率-10%',
+};
+
+export const SPY_SPEC_COLORS = {
+  infiltration: '#4488FF',
+  destruction: '#FF4444',
+  shadow: '#AA44FF',
+};
+
+export const INTEL_DURATION = 5;

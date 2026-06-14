@@ -316,6 +316,8 @@ func (c *WebSocketConn) handlePlayerAction(msg *Message, room *Room) {
 		execErr = c.handleBuyIntel(action.Params, room)
 	case ActionCancelIntelListing:
 		execErr = c.handleCancelIntelListing(action.Params, room)
+	case ActionChooseSpySpec:
+		execErr = c.handleChooseSpySpec(action.Params, room)
 	case ActionGetGameState:
 		c.handleGameStateRequest(room)
 		return
@@ -1021,4 +1023,16 @@ func (c *WebSocketConn) handleCancelIntelListing(params map[string]interface{}, 
 		return err
 	}
 	return room.CancelIntelListing(c.playerID, listingID)
+}
+
+func (c *WebSocketConn) handleChooseSpySpec(params map[string]interface{}, room *Room) error {
+	spyID, err := getStringParam(params, "spy_id")
+	if err != nil {
+		return err
+	}
+	specStr, err := getStringParam(params, "specialization")
+	if err != nil {
+		return err
+	}
+	return room.ChooseSpySpec(c.playerID, spyID, models.SpySpecialization(specStr))
 }

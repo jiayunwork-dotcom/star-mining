@@ -83,6 +83,7 @@ func (s *HTTPServer) setupRoutes() {
 	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/sell-intel", s.handler.SellIntelOnMarket).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/buy-intel", s.handler.BuyIntelFromMarket).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/cancel-intel-listing", s.handler.CancelIntelListing).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/rooms/{roomId}/players/{playerId}/choose-spy-spec", s.handler.ChooseSpySpec).Methods("POST", "OPTIONS")
 
 	s.router.HandleFunc("/ws/{roomId}/{playerId}", s.handler.WebSocketHandler)
 
