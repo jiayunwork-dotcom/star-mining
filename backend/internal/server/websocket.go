@@ -960,3 +960,65 @@ func (c *WebSocketConn) IsClosed() bool {
 	defer c.mu.Unlock()
 	return c.closed
 }
+
+func (c *WebSocketConn) handleRecruitSpy(room *Room) error {
+	_, err := room.RecruitSpy(c.playerID)
+	return err
+}
+
+func (c *WebSocketConn) handleAssignSpyMission(params map[string]interface{}, room *Room) error {
+	spyID, err := getStringParam(params, "spy_id")
+	if err != nil {
+		return err
+	}
+	targetPlayerID, err := getStringParam(params, "target_player_id")
+	if err != nil {
+		return err
+	}
+	missionTypeStr, err := getStringParam(params, "mission_type")
+	if err != nil {
+		return err
+	}
+	thirdPartyID, _ := getStringParam(params, "third_party_id")
+
+	_, err2 := room.AssignSpyMission(spyID, c.playerID, targetPlayerID, models.SpyMissionType(missionTypeStr), thirdPartyID)
+	return err2
+}
+
+func (c *WebSocketConn) handleSetCounterSpyLevel(params map[string]interface{}, room *Room) error {
+	levelStr, err := getStringParam(params, "level")
+	if err != nil {
+		return err
+	}
+	return room.SetCounterSpyLevel(c.playerID, models.CounterSpyLevel(levelStr))
+}
+
+func (c *WebSocketConn) handleSellIntel(params map[string]interface{}, room *Room) error {
+	intelID, err := getStringParam(params, "intel_id")
+	if err != nil {
+		return err
+	}
+	price, err := getFloatParam(params, "price")
+	if err != nil {
+		return err
+	}
+	_, err2 := room.SellIntelOnMarket(c.playerID, intelID, price)
+	return err2
+}
+
+func (c *WebSocketConn) handleBuyIntel(params map[string]interface{}, room *Room) error {
+	listingID, err := getStringParam(params, "listing_id")
+	if err != nil {
+		return err
+	}
+	_, err2 := room.BuyIntelFromMarket(c.playerID, listingID)
+	return err2
+}
+
+func (c *WebSocketConn) handleCancelIntelListing(params map[string]interface{}, room *Room) error {
+	listingID, err := getStringParam(params, "listing_id")
+	if err != nil {
+		return err
+	}
+	return room.CancelIntelListing(c.playerID, listingID)
+}
